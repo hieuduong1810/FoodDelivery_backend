@@ -31,4 +31,10 @@ public class DriverProfile {
 
     @Column(precision = 3, scale = 2)
     private BigDecimal averageRating;
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal codLimit;
+
+    @Column(columnDefinition = "JSON")
+    private String documents;
 }

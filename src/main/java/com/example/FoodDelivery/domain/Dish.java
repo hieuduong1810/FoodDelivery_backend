@@ -34,7 +34,7 @@ public class Dish {
     private BigDecimal price;
 
     private String imageUrl;
-    private String availabilityStatus;
+    private int availabilityQuantity;
 
     @OneToMany(mappedBy = "dish")
     private List<CartItem> cartItems;

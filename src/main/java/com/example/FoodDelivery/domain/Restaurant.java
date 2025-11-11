@@ -55,4 +55,7 @@ public class Restaurant {
 
     @OneToMany(mappedBy = "restaurant")
     private List<Voucher> vouchers;
+
+    @OneToMany(mappedBy = "restaurant")
+    private List<MonthlyRevenueReport> monthlyRevenueReports;
 }
