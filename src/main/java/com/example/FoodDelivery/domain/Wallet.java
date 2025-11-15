@@ -24,9 +24,6 @@ public class Wallet {
     @Column(precision = 15, scale = 2)
     private BigDecimal balance;
 
-    @Column(precision = 15, scale = 2)
-    private BigDecimal pendingBalance;
-
     @OneToMany(mappedBy = "wallet")
     private List<WalletTransaction> transactions;
 }

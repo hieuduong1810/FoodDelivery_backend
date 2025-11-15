@@ -5,6 +5,8 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 @Entity
 @Table(name = "restaurants")
 @Getter
@@ -45,17 +47,22 @@ public class Restaurant {
     private String schedule;
 
     @OneToMany(mappedBy = "restaurant")
+    @JsonIgnore
     private List<DishCategory> dishCategories;
 
     @OneToMany(mappedBy = "restaurant")
+    @JsonIgnore
     private List<Dish> dishes;
 
     @OneToMany(mappedBy = "restaurant")
+    @JsonIgnore
     private List<Order> orders;
 
     @OneToMany(mappedBy = "restaurant")
+    @JsonIgnore
     private List<Voucher> vouchers;
 
     @OneToMany(mappedBy = "restaurant")
+    @JsonIgnore
     private List<MonthlyRevenueReport> monthlyRevenueReports;
 }

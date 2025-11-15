@@ -12,7 +12,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.example.FoodDelivery.domain.User;
 import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
 import com.example.FoodDelivery.domain.res.user.ResCreateUserDTO;
 import com.example.FoodDelivery.domain.res.user.ResUpdateUserDTO;
@@ -23,10 +22,12 @@ import com.example.FoodDelivery.repository.UserRepository;
 public class UserService {
     private final UserRepository userRepository;
     private final RoleService roleService;
+    private final WalletService walletService;
 
-    public UserService(UserRepository userRepository, RoleService roleService) {
+    public UserService(UserRepository userRepository, RoleService roleService, WalletService walletService) {
         this.userRepository = userRepository;
         this.roleService = roleService;
+        this.walletService = walletService;
     }
 
     @Transactional
@@ -39,6 +40,10 @@ public class UserService {
         }
 
         User savedUser = this.userRepository.save(user);
+
+        // create wallet for new user with balance = 0
+        this.walletService.createWalletForUser(savedUser);
+
         return savedUser;
     }
 

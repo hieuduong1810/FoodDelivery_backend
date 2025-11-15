@@ -1,5 +1,7 @@
 package com.example.FoodDelivery.domain;
 
+import java.time.Instant;
+
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -12,6 +14,9 @@ import lombok.*;
 @Builder
 public class SystemConfiguration {
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
     private String configKey;
 
     @Column(columnDefinition = "TEXT")
@@ -23,4 +28,6 @@ public class SystemConfiguration {
     @ManyToOne
     @JoinColumn(name = "last_updated_by")
     private User lastUpdatedBy;
+
+    private Instant updatedAt;
 }
