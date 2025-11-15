@@ -70,6 +70,16 @@ public class GlobalException {
                                 .body(res);
         }
 
+        @ExceptionHandler(value = { StorageException.class })
+        public ResponseEntity<RestResponse<Object>> handleFileUploadException(Exception ex) {
+                RestResponse<Object> res = new RestResponse<Object>();
+                res.setStatusCode(HttpStatus.BAD_REQUEST.value());
+                res.setMessage(ex.getMessage());
+                res.setError("File upload error occurs...");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                                .body(res);
+        }
+
         @ExceptionHandler(value = { PermissionException.class })
         public ResponseEntity<RestResponse<Object>> handlePermissionException(Exception ex) {
                 RestResponse<Object> res = new RestResponse<Object>();
