@@ -32,6 +32,8 @@ public class User {
     private String email;
 
     private String phoneNumber;
+    private Boolean phoneVerified;
+    private Long telegramChatId;
     private Integer age;
 
     @Enumerated(EnumType.STRING)
