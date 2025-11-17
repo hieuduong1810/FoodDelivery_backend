@@ -51,7 +51,7 @@ public class AuthController {
 
         @PostMapping("/auth/login")
         @ApiMessage("User login")
-        public ResponseEntity<ResLoginDTO> login(@Valid @RequestBody ReqLoginDTO loginDTO) {
+        public ResponseEntity<ResLoginDTO> login(@Valid @RequestBody ReqLoginDTO loginDTO) throws IdInvalidException {
                 // Nạp input gồm username/password và Security
                 UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
                                 loginDTO.getUsername(), loginDTO.getPassword());
@@ -67,6 +67,12 @@ public class AuthController {
                 User currentUserDB = this.userService
                                 .handleGetUserByUsername(loginDTO.getUsername());
                 if (currentUserDB != null) {
+                        // Check if account is activated
+                        if (currentUserDB.getIsActive() == null || !currentUserDB.getIsActive()) {
+                                throw new IdInvalidException(
+                                                "Tài khoản chưa được kích hoạt. Vui lòng kiểm tra email để xác thực.");
+                        }
+
                         ResLoginDTO.UserLogin userLogin = resLoginDTO.new UserLogin(currentUserDB.getId(),
                                         currentUserDB.getEmail(), currentUserDB.getName(), currentUserDB.getRole());
                         resLoginDTO.setUser(userLogin);

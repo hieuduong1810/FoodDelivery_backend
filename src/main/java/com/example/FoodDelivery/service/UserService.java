@@ -23,15 +23,24 @@ public class UserService {
     private final UserRepository userRepository;
     private final RoleService roleService;
     private final WalletService walletService;
+    private final EmailVerificationService emailVerificationService;
 
-    public UserService(UserRepository userRepository, RoleService roleService, WalletService walletService) {
+    public UserService(
+            UserRepository userRepository,
+            RoleService roleService,
+            WalletService walletService,
+            EmailVerificationService emailVerificationService) {
         this.userRepository = userRepository;
         this.roleService = roleService;
         this.walletService = walletService;
+        this.emailVerificationService = emailVerificationService;
     }
 
     @Transactional
     public User handleCreateUser(User user) {
+
+        // Set user as inactive until email verification
+        user.setIsActive(false);
 
         // check role
         if (user.getRole() != null) {
@@ -43,6 +52,15 @@ public class UserService {
 
         // create wallet for new user with balance = 0
         this.walletService.createWalletForUser(savedUser);
+
+        // Send verification email with OTP
+        try {
+            emailVerificationService.sendVerificationEmail(savedUser);
+        } catch (Exception e) {
+            // Log error but don't fail user creation
+            // User can request resend later
+            System.err.println("Failed to send verification email to " + savedUser.getEmail() + ": " + e.getMessage());
+        }
 
         return savedUser;
     }

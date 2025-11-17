@@ -30,10 +30,7 @@ public class User {
 
     @NotBlank(message = "Email không được để trống")
     private String email;
-
     private String phoneNumber;
-    private Boolean phoneVerified;
-    private Long telegramChatId;
     private Integer age;
 
     @Enumerated(EnumType.STRING)

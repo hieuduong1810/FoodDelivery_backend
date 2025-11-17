@@ -33,6 +33,8 @@ dependencies {
 	implementation("javax.xml.bind:jaxb-api:2.3.1")
 	implementation("org.glassfish.jaxb:jaxb-runtime:2.3.1")
 	implementation("javax.activation:activation:1.1.1")
+	// Spring Mail for email verification
+	implementation("org.springframework.boot:spring-boot-starter-mail")
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	runtimeOnly("com.mysql:mysql-connector-j")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
