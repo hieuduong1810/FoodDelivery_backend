@@ -76,8 +76,11 @@ public class RestaurantService {
         if (restaurant.getCommissionRate() != null) {
             currentRestaurant.setCommissionRate(restaurant.getCommissionRate());
         }
-        if (restaurant.getSchedule() != null) {
-            currentRestaurant.setSchedule(restaurant.getSchedule());
+        if (restaurant.getOpeningTime() != null) {
+            currentRestaurant.setOpeningTime(restaurant.getOpeningTime());
+        }
+        if (restaurant.getClosingTime() != null) {
+            currentRestaurant.setClosingTime(restaurant.getClosingTime());
         }
         if (restaurant.getOwner() != null) {
             User owner = this.userService.getUserById(restaurant.getOwner().getId());

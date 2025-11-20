@@ -7,6 +7,7 @@ import com.turkraft.springfilter.boot.Filter;
 
 import com.example.FoodDelivery.domain.DriverProfile;
 import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
+import com.example.FoodDelivery.domain.res.driverProfile.ResDriverProfileDTO;
 import com.example.FoodDelivery.service.DriverProfileService;
 import com.example.FoodDelivery.util.annotation.ApiMessage;
 import com.example.FoodDelivery.util.error.IdInvalidException;
@@ -33,17 +34,17 @@ public class DriverProfileController {
 
     @PostMapping("/driver-profiles")
     @ApiMessage("Create driver profile")
-    public ResponseEntity<DriverProfile> createDriverProfile(@RequestBody DriverProfile driverProfile)
+    public ResponseEntity<ResDriverProfileDTO> createDriverProfile(@RequestBody DriverProfile driverProfile)
             throws IdInvalidException {
-        DriverProfile createdProfile = driverProfileService.createDriverProfile(driverProfile);
+        ResDriverProfileDTO createdProfile = driverProfileService.createDriverProfile(driverProfile);
         return ResponseEntity.status(HttpStatus.CREATED).body(createdProfile);
     }
 
     @PutMapping("/driver-profiles")
     @ApiMessage("Update driver profile")
-    public ResponseEntity<DriverProfile> updateDriverProfile(@RequestBody DriverProfile driverProfile)
+    public ResponseEntity<ResDriverProfileDTO> updateDriverProfile(@RequestBody DriverProfile driverProfile)
             throws IdInvalidException {
-        DriverProfile updatedProfile = driverProfileService.updateDriverProfile(driverProfile);
+        ResDriverProfileDTO updatedProfile = driverProfileService.updateDriverProfile(driverProfile);
         return ResponseEntity.ok(updatedProfile);
     }
 
@@ -57,8 +58,9 @@ public class DriverProfileController {
 
     @GetMapping("/driver-profiles/{id}")
     @ApiMessage("Get driver profile by id")
-    public ResponseEntity<DriverProfile> getDriverProfileById(@PathVariable("id") Long id) throws IdInvalidException {
-        DriverProfile profile = driverProfileService.getDriverProfileById(id);
+    public ResponseEntity<ResDriverProfileDTO> getDriverProfileById(@PathVariable("id") Long id)
+            throws IdInvalidException {
+        ResDriverProfileDTO profile = driverProfileService.getDriverProfileById(id);
         if (profile == null) {
             throw new IdInvalidException("Driver profile not found with id: " + id);
         }
@@ -67,9 +69,9 @@ public class DriverProfileController {
 
     @GetMapping("/driver-profiles/user/{userId}")
     @ApiMessage("Get driver profile by user id")
-    public ResponseEntity<DriverProfile> getDriverProfileByUserId(@PathVariable("userId") Long userId)
+    public ResponseEntity<ResDriverProfileDTO> getDriverProfileByUserId(@PathVariable("userId") Long userId)
             throws IdInvalidException {
-        DriverProfile profile = driverProfileService.getDriverProfileByUserId(userId);
+        ResDriverProfileDTO profile = driverProfileService.getDriverProfileByUserId(userId);
         if (profile == null) {
             throw new IdInvalidException("Driver profile not found for user id: " + userId);
         }
@@ -79,7 +81,7 @@ public class DriverProfileController {
     @DeleteMapping("/driver-profiles/{id}")
     @ApiMessage("Delete driver profile by id")
     public ResponseEntity<Void> deleteDriverProfile(@PathVariable("id") Long id) throws IdInvalidException {
-        DriverProfile profile = driverProfileService.getDriverProfileById(id);
+        ResDriverProfileDTO profile = driverProfileService.getDriverProfileById(id);
         if (profile == null) {
             throw new IdInvalidException("Driver profile not found with id: " + id);
         }

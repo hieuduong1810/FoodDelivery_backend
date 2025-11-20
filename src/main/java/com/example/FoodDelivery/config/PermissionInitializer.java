@@ -7,6 +7,7 @@ import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
@@ -18,6 +19,7 @@ import com.example.FoodDelivery.service.PermissionService;
 import lombok.extern.slf4j.Slf4j;
 
 @Component
+@Order(1) // Run first, before AdminInitializer
 @Slf4j
 public class PermissionInitializer implements CommandLineRunner {
 

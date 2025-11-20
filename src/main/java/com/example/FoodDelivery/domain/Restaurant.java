@@ -3,6 +3,7 @@ package com.example.FoodDelivery.domain;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -43,8 +44,9 @@ public class Restaurant {
     @Column(precision = 3, scale = 2)
     private BigDecimal averageRating;
 
-    @Column(columnDefinition = "JSON")
-    private String schedule;
+    private Instant openingTime;
+
+    private Instant closingTime;
 
     @OneToMany(mappedBy = "restaurant")
     @JsonIgnore
