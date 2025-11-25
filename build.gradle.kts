@@ -27,12 +27,6 @@ dependencies {
 	implementation("com.turkraft.springfilter:jpa:3.1.7")
 	implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0")
-	implementation("org.telegram:telegrambots:6.8.0")
-	implementation("org.telegram:telegrambotsextensions:6.8.0")
-	// JAXB dependencies for Java 11+ (required by Telegram Bots)
-	implementation("javax.xml.bind:jaxb-api:2.3.1")
-	implementation("org.glassfish.jaxb:jaxb-runtime:2.3.1")
-	implementation("javax.activation:activation:1.1.1")
 	// Spring Mail for email verification
 	implementation("org.springframework.boot:spring-boot-starter-mail")
 	// dotenv for environment variables
