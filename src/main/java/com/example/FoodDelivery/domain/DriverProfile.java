@@ -18,6 +18,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @Builder
 public class DriverProfile {
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private long id;
 
     @OneToOne

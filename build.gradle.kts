@@ -37,6 +37,8 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-mail")
 	// dotenv for environment variables
 	implementation("me.paulschwarz:spring-dotenv:4.0.0")
+	// Cloudinary for image upload
+	implementation("com.cloudinary:cloudinary-http44:1.36.0")
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")

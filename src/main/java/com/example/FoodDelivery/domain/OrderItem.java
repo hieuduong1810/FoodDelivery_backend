@@ -10,7 +10,6 @@ import java.math.BigDecimal;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class OrderItem {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -28,4 +27,5 @@ public class OrderItem {
 
     @Column(precision = 10, scale = 2)
     private BigDecimal priceAtPurchase;
+
 }
