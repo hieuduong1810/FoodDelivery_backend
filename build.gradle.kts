@@ -38,7 +38,7 @@ dependencies {
 	// dotenv for environment variables
 	implementation("me.paulschwarz:spring-dotenv:4.0.0")
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
-	runtimeOnly("com.mysql:mysql-connector-j")
+	runtimeOnly("org.mariadb.jdbc:mariadb-java-client")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.springframework.security:spring-security-test")
 }
