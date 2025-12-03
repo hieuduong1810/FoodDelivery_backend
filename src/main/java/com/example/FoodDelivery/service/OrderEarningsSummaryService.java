@@ -17,28 +17,39 @@ import com.example.FoodDelivery.domain.OrderEarningsSummary;
 import com.example.FoodDelivery.domain.Restaurant;
 import com.example.FoodDelivery.domain.SystemConfiguration;
 import com.example.FoodDelivery.domain.User;
+import com.example.FoodDelivery.domain.Wallet;
+import com.example.FoodDelivery.domain.WalletTransaction;
 import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
 import com.example.FoodDelivery.repository.OrderEarningsSummaryRepository;
 import com.example.FoodDelivery.util.error.IdInvalidException;
 
+import lombok.extern.slf4j.Slf4j;
+
 @Service
+@Slf4j
 public class OrderEarningsSummaryService {
     private final OrderEarningsSummaryRepository orderEarningsSummaryRepository;
     private final OrderService orderService;
     private final UserService userService;
     private final RestaurantService restaurantService;
     private final SystemConfigurationService systemConfigurationService;
+    private final WalletService walletService;
+    private final WalletTransactionService walletTransactionService;
 
     public OrderEarningsSummaryService(OrderEarningsSummaryRepository orderEarningsSummaryRepository,
             OrderService orderService,
             UserService userService,
             RestaurantService restaurantService,
-            SystemConfigurationService systemConfigurationService) {
+            SystemConfigurationService systemConfigurationService,
+            WalletService walletService,
+            WalletTransactionService walletTransactionService) {
         this.orderEarningsSummaryRepository = orderEarningsSummaryRepository;
         this.orderService = orderService;
         this.userService = userService;
         this.restaurantService = restaurantService;
         this.systemConfigurationService = systemConfigurationService;
+        this.walletService = walletService;
+        this.walletTransactionService = walletTransactionService;
     }
 
     public OrderEarningsSummary getOrderEarningsSummaryById(Long id) {
@@ -195,7 +206,129 @@ public class OrderEarningsSummaryService {
                 .recordedAt(Instant.now())
                 .build();
 
-        return orderEarningsSummaryRepository.save(summary);
+        summary = orderEarningsSummaryRepository.save(summary);
+
+        // Distribute money to driver and restaurant wallets
+        try {
+            distributeEarnings(summary);
+        } catch (Exception e) {
+            log.error("Failed to distribute earnings for order {}: {}", orderId, e.getMessage());
+            // Don't throw exception, just log error to avoid blocking order completion
+        }
+
+        return summary;
+    }
+
+    /**
+     * Distribute earnings to driver and restaurant wallets, deduct from admin
+     * wallet
+     * 
+     * @param summary Order earnings summary
+     */
+    @Transactional
+    private void distributeEarnings(OrderEarningsSummary summary) throws IdInvalidException {
+        Long orderId = summary.getOrder().getId();
+
+        // Add money to driver wallet
+        if (summary.getDriver() != null && summary.getDriverNetEarning() != null
+                && summary.getDriverNetEarning().compareTo(BigDecimal.ZERO) > 0) {
+            Wallet driverWallet = walletService.getWalletByUserId(summary.getDriver().getId());
+            if (driverWallet != null) {
+                walletService.addBalance(driverWallet.getId(), summary.getDriverNetEarning());
+
+                // Create transaction record
+                WalletTransaction driverTransaction = WalletTransaction.builder()
+                        .wallet(driverWallet)
+                        .transactionType("DELIVERY_EARNING")
+                        .amount(summary.getDriverNetEarning())
+                        .balanceAfter(driverWallet.getBalance())
+                        .description("Delivery earning from order #" + orderId)
+                        .relatedOrderId(orderId)
+                        .status("SUCCESS")
+                        .transactionDate(Instant.now())
+                        .createdAt(Instant.now())
+                        .build();
+                walletTransactionService.createWalletTransaction(driverTransaction);
+                log.info("Added {} to driver {} wallet for order {}", summary.getDriverNetEarning(),
+                        summary.getDriver().getId(), orderId);
+            }
+        }
+
+        // Add money to restaurant wallet (owner's wallet)
+        if (summary.getRestaurant() != null && summary.getRestaurantNetEarning() != null
+                && summary.getRestaurantNetEarning().compareTo(BigDecimal.ZERO) > 0) {
+            // Get restaurant owner
+            User restaurantOwner = summary.getRestaurant().getOwner();
+            if (restaurantOwner != null) {
+                Wallet restaurantWallet = walletService.getWalletByUserId(restaurantOwner.getId());
+                if (restaurantWallet != null) {
+                    walletService.addBalance(restaurantWallet.getId(), summary.getRestaurantNetEarning());
+
+                    // Create transaction record
+                    WalletTransaction restaurantTransaction = WalletTransaction.builder()
+                            .wallet(restaurantWallet)
+                            .transactionType("RESTAURANT_EARNING")
+                            .amount(summary.getRestaurantNetEarning())
+                            .balanceAfter(restaurantWallet.getBalance())
+                            .description("Restaurant earning from order #" + orderId + " ("
+                                    + summary.getRestaurant().getName() + ")")
+                            .relatedOrderId(orderId)
+                            .status("SUCCESS")
+                            .transactionDate(Instant.now())
+                            .createdAt(Instant.now())
+                            .build();
+                    walletTransactionService.createWalletTransaction(restaurantTransaction);
+                    log.info("Added {} to restaurant owner {} wallet for order {}", summary.getRestaurantNetEarning(),
+                            restaurantOwner.getId(), orderId);
+                }
+            }
+        }
+
+        // Deduct commission from admin wallet
+        BigDecimal totalCommission = summary.getDriverNetEarning().add(summary.getRestaurantNetEarning());
+        if (totalCommission != null && totalCommission.compareTo(BigDecimal.ZERO) > 0) {
+            User admin = getAdminUser();
+            if (admin != null) {
+                Wallet adminWallet = walletService.getWalletByUserId(admin.getId());
+                if (adminWallet != null) {
+                    // Check if admin has enough balance
+                    if (adminWallet.getBalance().compareTo(totalCommission) >= 0) {
+                        walletService.subtractBalance(adminWallet.getId(), totalCommission);
+
+                        // Create transaction record
+                        WalletTransaction adminTransaction = WalletTransaction.builder()
+                                .wallet(adminWallet)
+                                .transactionType("COMMISSION_PAID")
+                                .amount(totalCommission.negate()) // negative for deduction
+                                .balanceAfter(adminWallet.getBalance())
+                                .description("Commission paid to driver and restaurant for order #" + orderId)
+                                .relatedOrderId(orderId)
+                                .status("SUCCESS")
+                                .transactionDate(Instant.now())
+                                .createdAt(Instant.now())
+                                .build();
+                        walletTransactionService.createWalletTransaction(adminTransaction);
+                        log.info("Deducted {} commission from admin wallet for order {}", totalCommission, orderId);
+                    } else {
+                        log.warn(
+                                "Admin wallet has insufficient balance to pay commission for order {}. Required: {}, Available: {}",
+                                orderId, totalCommission, adminWallet.getBalance());
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Get admin user
+     */
+    private User getAdminUser() {
+        try {
+            return userService.getUserByRoleName("ADMIN");
+        } catch (Exception e) {
+            log.error("Error getting admin user: {}", e.getMessage());
+            return null;
+        }
     }
 
     @Transactional

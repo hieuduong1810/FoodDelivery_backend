@@ -19,6 +19,7 @@ import com.example.FoodDelivery.domain.Order;
 import com.example.FoodDelivery.domain.User;
 import com.example.FoodDelivery.domain.Wallet;
 import com.example.FoodDelivery.domain.WalletTransaction;
+import com.example.FoodDelivery.repository.OrderRepository;
 import com.example.FoodDelivery.util.error.IdInvalidException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class VNPayService {
     private final WalletService walletService;
     private final WalletTransactionService walletTransactionService;
     private final UserService userService;
+    private final OrderRepository orderRepository;
 
     @Value("${vnpay.tmn_code:CTTVNP01}")
     private String vnp_TmnCode;
@@ -45,10 +47,12 @@ public class VNPayService {
     public VNPayService(
             WalletService walletService,
             WalletTransactionService walletTransactionService,
-            UserService userService) {
+            UserService userService,
+            OrderRepository orderRepository) {
         this.walletService = walletService;
         this.walletTransactionService = walletTransactionService;
         this.userService = userService;
+        this.orderRepository = orderRepository;
     }
 
     /**
@@ -131,6 +135,9 @@ public class VNPayService {
     public Map<String, Object> processCallback(Map<String, String> params) throws IdInvalidException {
         Map<String, Object> result = new HashMap<>();
 
+        // Log all params for debugging
+        log.info("VNPAY callback params: {}", params);
+
         // Get response code
         String vnp_ResponseCode = params.get("vnp_ResponseCode");
         String vnp_TxnRef = params.get("vnp_TxnRef"); // Order ID
@@ -139,37 +146,50 @@ public class VNPayService {
         String vnp_SecureHash = params.get("vnp_SecureHash");
 
         // Verify secure hash
-        params.remove("vnp_SecureHash");
-        params.remove("vnp_SecureHashType");
+        // Create a copy of params to preserve original
+        Map<String, String> paramsForHash = new HashMap<>(params);
+        paramsForHash.remove("vnp_SecureHash");
+        paramsForHash.remove("vnp_SecureHashType");
 
-        List<String> fieldNames = new ArrayList<>(params.keySet());
+        List<String> fieldNames = new ArrayList<>(paramsForHash.keySet());
         Collections.sort(fieldNames);
         StringBuilder hashData = new StringBuilder();
+        Iterator<String> itr = fieldNames.iterator();
 
-        for (String fieldName : fieldNames) {
-            String fieldValue = params.get(fieldName);
+        while (itr.hasNext()) {
+            String fieldName = itr.next();
+            String fieldValue = paramsForHash.get(fieldName);
             if ((fieldValue != null) && (fieldValue.length() > 0)) {
-                hashData.append(fieldName);
-                hashData.append('=');
-                hashData.append(fieldValue);
-                hashData.append('&');
+                // URL encode the value like VNPAY does
+                try {
+                    hashData.append(fieldName);
+                    hashData.append('=');
+                    hashData.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII.toString()));
+                    if (itr.hasNext()) {
+                        hashData.append('&');
+                    }
+                } catch (UnsupportedEncodingException e) {
+                    log.error("Error encoding field value: {}", e.getMessage());
+                }
             }
         }
 
-        // Remove last &
-        if (hashData.length() > 0) {
-            hashData.deleteCharAt(hashData.length() - 1);
-        }
+        String hashDataStr = hashData.toString();
+        String calculatedHash = hmacSHA512(vnp_HashSecret, hashDataStr);
 
-        String calculatedHash = hmacSHA512(vnp_HashSecret, hashData.toString());
+        log.info("Hash data (encoded): {}", hashDataStr);
+        log.info("Calculated hash: {}", calculatedHash);
+        log.info("Received hash: {}", vnp_SecureHash);
 
-        if (!calculatedHash.equals(vnp_SecureHash)) {
+        // Compare case-insensitive since VNPAY might return uppercase or lowercase
+        if (!calculatedHash.equalsIgnoreCase(vnp_SecureHash)) {
+            log.error("Invalid secure hash verification failed!");
             result.put("success", false);
             result.put("message", "Invalid secure hash");
             return result;
         }
 
-        // Parse amount (divide by 100 to convert back to VND)
+        log.info("Secure hash verified successfully!"); // Parse amount (divide by 100 to convert back to VND)
         BigDecimal amount = new BigDecimal(vnp_Amount).divide(new BigDecimal("100"));
 
         // Check response code
@@ -210,6 +230,7 @@ public class VNPayService {
 
             result.put("message", "Payment successful");
         } else {
+            orderRepository.deleteById(Long.valueOf(vnp_TxnRef));
             result.put("message", "Payment failed with code: " + vnp_ResponseCode);
         }
 

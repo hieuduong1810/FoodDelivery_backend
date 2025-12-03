@@ -45,7 +45,8 @@ public class SecurityConfiguration {
                 "/storage/**",
                 "/v3/api-docs/**",
                 "/swagger-ui/**",
-                "/swagger-ui.html" };
+                "/swagger-ui.html",
+                "/api/v1/payment/**" };
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())

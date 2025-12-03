@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +31,7 @@ public class PaymentService {
 
     public PaymentService(
             WalletService walletService,
-            WalletTransactionService walletTransactionService,
+            @Lazy WalletTransactionService walletTransactionService,
             SystemConfigurationService systemConfigurationService,
             UserService userService,
             DriverProfileService driverProfileService) {
@@ -193,6 +194,30 @@ public class PaymentService {
     public Map<String, Object> processCODPaymentOnDelivery(Order order) throws IdInvalidException {
         Map<String, Object> result = new HashMap<>();
 
+        // Get driver wallet
+        Wallet driverWallet = walletService.getWalletByUserId(order.getDriver().getId());
+        if (driverWallet == null) {
+            throw new IdInvalidException("Driver wallet not found");
+        }
+
+        // Check sufficient balance
+        BigDecimal totalAmount = order.getTotalAmount();
+
+        // Deduct from driver wallet
+        walletService.subtractBalance(driverWallet.getId(), totalAmount);
+
+        // Create wallet transaction for driver
+        WalletTransaction driverTransaction = WalletTransaction.builder()
+                .wallet(driverWallet)
+                .transactionType("PAYMENT")
+                .amount(totalAmount.negate()) // negative for deduction
+                .balanceAfter(driverWallet.getBalance())
+                .description("Payment for order #" + order.getId())
+                .relatedOrderId(order.getId())
+                .transactionDate(Instant.now())
+                .build();
+        walletTransactionService.createWalletTransaction(driverTransaction);
+
         // Add to admin wallet
         User admin = getAdminUser();
         if (admin == null) {
@@ -204,7 +229,6 @@ public class PaymentService {
             throw new IdInvalidException("Admin wallet not found");
         }
 
-        BigDecimal totalAmount = order.getTotalAmount();
         walletService.addBalance(adminWallet.getId(), totalAmount);
 
         // Create wallet transaction for admin

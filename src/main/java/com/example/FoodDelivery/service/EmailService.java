@@ -18,14 +18,11 @@ public class EmailService {
     @Value("${spring.mail.username}")
     private String fromEmail;
 
-    @Value("${app.base-url:http://localhost:8080}")
-    private String baseUrl;
-
     public EmailService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
     }
 
-    public void sendVerificationEmail(String toEmail, String userName, String otpCode) {
+    public void sendVerificationEmail(String toEmail, String userName, String otpCode, String baseUrl) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -99,7 +96,7 @@ public class EmailService {
         }
     }
 
-    public void sendWelcomeEmail(String toEmail, String userName) {
+    public void sendWelcomeEmail(String toEmail, String userName, String baseUrl) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");

@@ -32,6 +32,7 @@ public class ResOrderDTO {
     private Instant createdAt;
     private Instant deliveredAt;
     private List<ResOrderItemDTO> orderItems;
+    private String vnpayPaymentUrl; // VNPAY payment URL if payment method is VNPAY
 
     @Getter
     @Setter

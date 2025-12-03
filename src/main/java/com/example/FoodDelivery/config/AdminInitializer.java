@@ -80,6 +80,7 @@ public class AdminInitializer implements CommandLineRunner {
         // 2. Create admin user
         log.info("Creating admin user...");
         User adminUser = new User();
+        adminUser.setId(1L);
         adminUser.setName("admin");
         adminUser.setEmail("admin@gmail.com");
         adminUser.setPassword(passwordEncoder.encode("123456"));

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import com.example.FoodDelivery.domain.Order;
 
+import java.time.Instant;
 import java.util.List;
 
 @Repository
@@ -19,4 +20,17 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     List<Order> findByOrderStatus(String orderStatus);
 
     List<Order> findByCustomerIdAndOrderStatus(Long customerId, String orderStatus);
+
+    List<Order> findByRestaurantIdAndOrderStatus(Long restaurantId, String orderStatus);
+
+    List<Order> findByDriverIdAndOrderStatus(Long driverId, String orderStatus);
+
+    List<Order> findByRestaurantIdOrderByCreatedAtDesc(Long restaurantId);
+
+    List<Order> findByCustomerIdOrderByCreatedAtDesc(Long customerId);
+
+    List<Order> findByDriverIdOrderByCreatedAtDesc(Long driverId);
+
+    List<Order> findByPaymentMethodAndPaymentStatusAndCreatedAtBefore(String paymentMethod, String paymentStatus,
+            Instant createdAt);
 }
