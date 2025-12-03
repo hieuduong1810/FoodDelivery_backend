@@ -35,5 +35,12 @@ public class WalletTransaction {
 
     private String status;
 
+    @Column(precision = 15, scale = 2)
+    private BigDecimal balanceAfter;
+
+    private Long relatedOrderId;
+
     private Instant createdAt;
+
+    private Instant transactionDate;
 }

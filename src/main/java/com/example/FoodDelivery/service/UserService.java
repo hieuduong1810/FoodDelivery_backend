@@ -80,6 +80,15 @@ public class UserService {
     }
 
     @Transactional
+    public User getUserByRoleName(String roleName) {
+        List<User> users = this.userRepository.findAll();
+        return users.stream()
+                .filter(user -> user.getRole() != null && roleName.equals(user.getRole().getName()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    @Transactional
     public ResultPaginationDTO getAllUsers(Specification<User> spec, Pageable pageable) {
         Page<User> page = this.userRepository.findAll(spec, pageable);
         ResultPaginationDTO result = new ResultPaginationDTO();

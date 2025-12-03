@@ -12,6 +12,7 @@ import com.example.FoodDelivery.domain.res.order.ResOrderDTO;
 import com.example.FoodDelivery.service.OrderService;
 import com.example.FoodDelivery.util.annotation.ApiMessage;
 import com.example.FoodDelivery.util.error.IdInvalidException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 import org.springframework.data.domain.Pageable;
@@ -41,10 +42,31 @@ public class OrderController {
 
     @PostMapping("/orders")
     @ApiMessage("Create order")
-    public ResponseEntity<ResOrderDTO> createOrder(@Valid @RequestBody ReqOrderDTO reqOrderDTO)
-            throws IdInvalidException {
-        ResOrderDTO createdOrder = orderService.createOrderFromReqDTO(reqOrderDTO);
+    public ResponseEntity<ResOrderDTO> createOrder(
+            @Valid @RequestBody ReqOrderDTO reqOrderDTO,
+            HttpServletRequest request) throws IdInvalidException {
+        String clientIp = getClientIp(request);
+        ResOrderDTO createdOrder = orderService.createOrderFromReqDTO(reqOrderDTO, clientIp);
         return ResponseEntity.status(HttpStatus.CREATED).body(createdOrder);
+    }
+
+    /**
+     * Extract client IP address from request
+     * Handles proxy/load balancer scenarios
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        // If multiple IPs in X-Forwarded-For, take the first one
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip != null ? ip : "127.0.0.1";
     }
 
     @PutMapping("/orders")
@@ -69,6 +91,14 @@ public class OrderController {
         if (order == null) {
             throw new IdInvalidException("Order not found with id: " + id);
         }
+        return ResponseEntity.ok(order);
+    }
+
+    @PatchMapping("/orders/{id}/assign-driver")
+    @ApiMessage("Assign driver to order")
+    public ResponseEntity<ResOrderDTO> assignDriver(
+            @PathVariable("id") Long orderId) throws IdInvalidException {
+        ResOrderDTO order = orderService.assignDriver(orderId);
         return ResponseEntity.ok(order);
     }
 
@@ -100,39 +130,102 @@ public class OrderController {
         return ResponseEntity.ok(orders);
     }
 
-    @PatchMapping("/orders/{id}/assign-driver")
-    @ApiMessage("Assign driver to order")
-    public ResponseEntity<ResOrderDTO> assignDriver(
-            @PathVariable("id") Long orderId,
-            @RequestBody Map<String, Long> body) throws IdInvalidException {
-        Long driverId = body.get("driverId");
-        if (driverId == null) {
-            throw new IdInvalidException("Driver id is required");
-        }
-        ResOrderDTO order = orderService.assignDriver(orderId, driverId);
+    @GetMapping("/orders/restaurant/{restaurantId}/status/{orderStatus}")
+    @ApiMessage("Get orders by restaurant id and status")
+    public ResponseEntity<List<ResOrderDTO>> getOrdersByRestaurantIdAndStatus(
+            @PathVariable("restaurantId") Long restaurantId,
+            @PathVariable("orderStatus") String orderStatus) {
+        List<ResOrderDTO> orders = orderService.getOrdersDTOByRestaurantIdAndStatus(restaurantId, orderStatus);
+        return ResponseEntity.ok(orders);
+    }
+
+    @GetMapping("/orders/customer/{customerId}/status/{orderStatus}")
+    @ApiMessage("Get orders by customer id and status")
+    public ResponseEntity<List<ResOrderDTO>> getOrdersByCustomerIdAndStatus(
+            @PathVariable("customerId") Long customerId,
+            @PathVariable("orderStatus") String orderStatus) {
+        List<ResOrderDTO> orders = orderService.getOrdersDTOByCustomerId(customerId);
+        return ResponseEntity.ok(orders);
+    }
+
+    @GetMapping("/orders/driver/{driverId}/status/{orderStatus}")
+    @ApiMessage("Get orders by driver id and status")
+    public ResponseEntity<List<ResOrderDTO>> getOrdersByDriverIdAndStatus(
+            @PathVariable("driverId") Long driverId,
+            @PathVariable("orderStatus") String orderStatus) {
+        List<ResOrderDTO> orders = orderService.getOrdersDTOByDriverId(driverId);
+        return ResponseEntity.ok(orders);
+    }
+
+    @PatchMapping("/orders/{id}/restaurant/ready")
+    @ApiMessage("Mark order as ready for pickup")
+    public ResponseEntity<ResOrderDTO> markOrderAsReady(@PathVariable("id") Long orderId) throws IdInvalidException {
+        ResOrderDTO order = orderService.markOrderAsReady(orderId);
         return ResponseEntity.ok(order);
     }
 
-    @PatchMapping("/orders/{id}/status")
-    @ApiMessage("Update order status")
-    public ResponseEntity<ResOrderDTO> updateOrderStatus(
-            @PathVariable("id") Long orderId,
-            @RequestBody Map<String, String> body) throws IdInvalidException {
-        String status = body.get("status");
-        if (status == null) {
-            throw new IdInvalidException("Status is required");
-        }
-        ResOrderDTO order = orderService.updateOrderStatus(orderId, status);
-        return ResponseEntity.ok(order);
-    }
-
-    @PatchMapping("/orders/{id}/cancel")
+    @PatchMapping("/orders/{id}/customer/cancel")
     @ApiMessage("Cancel order")
     public ResponseEntity<Order> cancelOrder(
             @PathVariable("id") Long orderId,
             @RequestBody Map<String, String> body) throws IdInvalidException {
         String cancellationReason = body.get("cancellationReason");
         Order order = orderService.cancelOrder(orderId, cancellationReason);
+        return ResponseEntity.ok(order);
+    }
+
+    @PatchMapping("/orders/{id}/restaurant/accept")
+    @ApiMessage("Accept order")
+    public ResponseEntity<ResOrderDTO> acceptOrder(@PathVariable("id") Long orderId) throws IdInvalidException {
+        ResOrderDTO order = orderService.acceptOrder(orderId);
+        return ResponseEntity.ok(order);
+    }
+
+    @PatchMapping("/orders/{id}/restaurant/reject")
+    @ApiMessage("Reject order")
+    public ResponseEntity<ResOrderDTO> rejectOrder(
+            @PathVariable("id") Long orderId,
+            @RequestBody Map<String, String> body) throws IdInvalidException {
+        String rejectionReason = body.get("rejectionReason");
+        if (rejectionReason == null || rejectionReason.trim().isEmpty()) {
+            throw new IdInvalidException("Rejection reason is required");
+        }
+        ResOrderDTO order = orderService.rejectOrder(orderId, rejectionReason);
+        return ResponseEntity.ok(order);
+    }
+
+    @PatchMapping("/orders/{id}/driver/accept")
+    @ApiMessage("Driver accepts order")
+    public ResponseEntity<ResOrderDTO> acceptOrderByDriver(@PathVariable("id") Long orderId) throws IdInvalidException {
+        ResOrderDTO order = orderService.acceptOrderByDriver(orderId);
+        return ResponseEntity.ok(order);
+    }
+
+    @PatchMapping("/orders/{id}/driver/reject")
+    @ApiMessage("Driver rejects order")
+    public ResponseEntity<ResOrderDTO> rejectOrderByDriver(
+            @PathVariable("id") Long orderId,
+            @RequestBody Map<String, String> body) throws IdInvalidException {
+        String rejectionReason = body.get("rejectionReason");
+        if (rejectionReason == null || rejectionReason.trim().isEmpty()) {
+            throw new IdInvalidException("Rejection reason is required");
+        }
+        ResOrderDTO order = orderService.rejectOrderByDriver(orderId, rejectionReason);
+        return ResponseEntity.ok(order);
+    }
+
+    @PatchMapping("/orders/{id}/driver/picked-up")
+    @ApiMessage("Driver marks order as picked up")
+    public ResponseEntity<ResOrderDTO> markOrderAsPickedUp(@PathVariable("id") Long orderId) throws IdInvalidException {
+        ResOrderDTO order = orderService.markOrderAsPickedUp(orderId);
+        return ResponseEntity.ok(order);
+    }
+
+    @PatchMapping("/orders/{id}/driver/delivered")
+    @ApiMessage("Driver marks order as delivered")
+    public ResponseEntity<ResOrderDTO> markOrderAsDelivered(@PathVariable("id") Long orderId)
+            throws IdInvalidException {
+        ResOrderDTO order = orderService.markOrderAsDelivered(orderId);
         return ResponseEntity.ok(order);
     }
 

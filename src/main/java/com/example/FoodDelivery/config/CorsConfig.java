@@ -15,11 +15,9 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(
-                Arrays.asList(
-                        "http://localhost:3000",
-                        "http://localhost:4173",
-                        "http://localhost:5173",
-                        "http://113.177.135.214:38284"));
+                Arrays.asList("http://localhost:3000", "http://localhost:4173", "http://localhost:5173",
+                        "https://eatzy-frontend-restaurant.vercel.app", "https://eatzy-frontend-customer.vercel.app",
+                        "https://eatzy-frontend-driver.vercel.app")); // Allowed origins
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS")); // Allowed methods
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept", "x-no-retry"));
         configuration.setAllowCredentials(true);

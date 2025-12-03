@@ -12,8 +12,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.FoodDelivery.domain.Dish;
+import com.example.FoodDelivery.domain.DriverProfile;
 import com.example.FoodDelivery.domain.MenuOption;
 import com.example.FoodDelivery.domain.Order;
+import com.example.FoodDelivery.domain.OrderDriverRejection;
 import com.example.FoodDelivery.domain.OrderItem;
 import com.example.FoodDelivery.domain.OrderItemOption;
 import com.example.FoodDelivery.domain.Restaurant;
@@ -23,16 +25,24 @@ import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
 import com.example.FoodDelivery.domain.res.order.ResOrderDTO;
 import com.example.FoodDelivery.domain.res.order.ResOrderItemDTO;
 import com.example.FoodDelivery.domain.res.order.ResOrderItemOptionDTO;
+import com.example.FoodDelivery.repository.DriverProfileRepository;
 import com.example.FoodDelivery.repository.MenuOptionRepository;
+import com.example.FoodDelivery.repository.OrderDriverRejectionRepository;
 import com.example.FoodDelivery.repository.OrderRepository;
 import com.example.FoodDelivery.util.error.IdInvalidException;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class OrderService {
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     private final OrderEarningsSummaryService orderEarningsSummaryService;
 
@@ -41,16 +51,28 @@ public class OrderService {
     private final RestaurantService restaurantService;
     private final DishService dishService;
     private final MenuOptionRepository menuOptionRepository;
+    private final DriverProfileRepository driverProfileRepository;
+    private final OrderDriverRejectionRepository orderDriverRejectionRepository;
+    private final PaymentService paymentService;
+    private final VNPayService vnPayService;
 
     public OrderService(OrderRepository orderRepository, UserService userService,
             RestaurantService restaurantService, DishService dishService,
-            MenuOptionRepository menuOptionRepository, @Lazy OrderEarningsSummaryService orderEarningsSummaryService) {
+            MenuOptionRepository menuOptionRepository, @Lazy OrderEarningsSummaryService orderEarningsSummaryService,
+            DriverProfileRepository driverProfileRepository,
+            OrderDriverRejectionRepository orderDriverRejectionRepository,
+            PaymentService paymentService,
+            VNPayService vnPayService) {
         this.orderRepository = orderRepository;
         this.userService = userService;
         this.restaurantService = restaurantService;
         this.dishService = dishService;
         this.menuOptionRepository = menuOptionRepository;
         this.orderEarningsSummaryService = orderEarningsSummaryService;
+        this.driverProfileRepository = driverProfileRepository;
+        this.orderDriverRejectionRepository = orderDriverRejectionRepository;
+        this.paymentService = paymentService;
+        this.vnPayService = vnPayService;
     }
 
     private ResOrderDTO convertToResOrderDTO(Order order) {
@@ -176,58 +198,36 @@ public class OrderService {
         return this.orderRepository.findByCustomerIdAndOrderStatus(customerId, orderStatus);
     }
 
-    @Transactional
-    public Order createOrder(Order order) throws IdInvalidException {
-        // check customer exists
-        if (order.getCustomer() != null) {
-            User customer = this.userService.getUserById(order.getCustomer().getId());
-            if (customer == null) {
-                throw new IdInvalidException("Customer not found with id: " + order.getCustomer().getId());
-            }
-            order.setCustomer(customer);
-        } else {
-            throw new IdInvalidException("Customer is required");
-        }
-
-        // check restaurant exists
-        if (order.getRestaurant() != null) {
-            Restaurant restaurant = this.restaurantService.getRestaurantById(order.getRestaurant().getId());
-            if (restaurant == null) {
-                throw new IdInvalidException("Restaurant not found with id: " + order.getRestaurant().getId());
-            }
-            order.setRestaurant(restaurant);
-        } else {
-            throw new IdInvalidException("Restaurant is required");
-        }
-
-        // check driver exists (if assigned)
-        if (order.getDriver() != null) {
-            User driver = this.userService.getUserById(order.getDriver().getId());
-            if (driver == null) {
-                throw new IdInvalidException("Driver not found with id: " + order.getDriver().getId());
-            }
-            order.setDriver(driver);
-        }
-
-        // set default values
-        if (order.getOrderStatus() == null) {
-            order.setOrderStatus("PENDING");
-        }
-        if (order.getPaymentStatus() == null) {
-            order.setPaymentStatus("UNPAID");
-        }
-        order.setCreatedAt(Instant.now());
-
-        return orderRepository.save(order);
+    public List<ResOrderDTO> getOrdersDTOByRestaurantId(Long restaurantId) {
+        List<Order> orders = this.orderRepository.findByRestaurantIdOrderByCreatedAtDesc(restaurantId);
+        return orders.stream()
+                .map(this::convertToResOrderDTO)
+                .collect(Collectors.toList());
     }
 
-    public ResOrderDTO createOrderDTO(Order order) throws IdInvalidException {
-        Order savedOrder = createOrder(order);
-        return convertToResOrderDTO(savedOrder);
+    public List<ResOrderDTO> getOrdersDTOByRestaurantIdAndStatus(Long restaurantId, String orderStatus) {
+        List<Order> orders = this.orderRepository.findByRestaurantIdAndOrderStatus(restaurantId, orderStatus);
+        return orders.stream()
+                .map(this::convertToResOrderDTO)
+                .collect(Collectors.toList());
+    }
+
+    public List<ResOrderDTO> getOrdersDTOByCustomerId(Long customerId) {
+        List<Order> orders = this.orderRepository.findByCustomerIdOrderByCreatedAtDesc(customerId);
+        return orders.stream()
+                .map(this::convertToResOrderDTO)
+                .collect(Collectors.toList());
+    }
+
+    public List<ResOrderDTO> getOrdersDTOByDriverId(Long driverId) {
+        List<Order> orders = this.orderRepository.findByDriverIdOrderByCreatedAtDesc(driverId);
+        return orders.stream()
+                .map(this::convertToResOrderDTO)
+                .collect(Collectors.toList());
     }
 
     @Transactional
-    public ResOrderDTO createOrderFromReqDTO(ReqOrderDTO reqOrderDTO) throws IdInvalidException {
+    public ResOrderDTO createOrderFromReqDTO(ReqOrderDTO reqOrderDTO, String clientIp) throws IdInvalidException {
         // Create Order entity
         Order order = new Order();
 
@@ -359,7 +359,36 @@ public class OrderService {
 
         savedOrder = orderRepository.save(savedOrder);
 
-        return convertToResOrderDTO(savedOrder);
+        // Process payment based on payment method
+        ResOrderDTO orderDTO = convertToResOrderDTO(savedOrder);
+
+        if ("WALLET".equals(savedOrder.getPaymentMethod())) {
+            // Process wallet payment
+            Map<String, Object> paymentResult = paymentService.processWalletPayment(savedOrder);
+            if (!(Boolean) paymentResult.get("success")) {
+                // Rollback order creation if payment fails
+                orderRepository.delete(savedOrder);
+                throw new IdInvalidException((String) paymentResult.get("message"));
+            }
+            savedOrder.setPaymentStatus("PAID");
+            savedOrder = orderRepository.save(savedOrder);
+            orderDTO.setPaymentStatus("PAID");
+        } else if ("VNPAY".equals(savedOrder.getPaymentMethod())) {
+            // Generate VNPAY payment URL
+            try {
+                String paymentUrl = vnPayService.createPaymentUrl(savedOrder, clientIp);
+                orderDTO.setVnpayPaymentUrl(paymentUrl);
+                log.info("VNPAY payment URL generated for order {} with client IP {}: {}",
+                        savedOrder.getId(), clientIp, paymentUrl);
+            } catch (Exception e) {
+                log.error("Failed to generate VNPAY payment URL: {}", e.getMessage());
+                throw new IdInvalidException("Failed to generate payment URL: " + e.getMessage());
+            }
+            // VNPAY payment will be updated after callback
+            savedOrder.setPaymentStatus("UNPAID");
+        }
+
+        return orderDTO;
     }
 
     @Transactional
@@ -428,43 +457,44 @@ public class OrderService {
     }
 
     @Transactional
-    public ResOrderDTO assignDriver(Long orderId, Long driverId) throws IdInvalidException {
+    public ResOrderDTO assignDriver(Long orderId) throws IdInvalidException {
+
         Order order = getOrderById(orderId);
         if (order == null) {
             throw new IdInvalidException("Order not found with id: " + orderId);
         }
+        if (order.getPaymentMethod() == "COD") {
+            Optional<DriverProfile> driverOpt = driverProfileRepository
+                    .findFirstAvailableDriverByCodLimit(order.getTotalAmount());
+            if (!driverOpt.isPresent()) {
+                throw new IdInvalidException("No available driver found for this order");
+            }
 
-        User driver = this.userService.getUserById(driverId);
-        if (driver == null) {
-            throw new IdInvalidException("Driver not found with id: " + driverId);
+            User driver = this.userService.getUserById(driverOpt.get().getUser().getId());
+            if (driver == null) {
+                throw new IdInvalidException("Driver not found with id: " + driverOpt.get().getUser().getId());
+            }
+            order.setDriver(driver);
+        } else {
+            Optional<DriverProfile> driverOpt = driverProfileRepository
+                    .findFirstAvailableDriver();
+            if (!driverOpt.isPresent()) {
+                throw new IdInvalidException("No available driver found for this order");
+            }
+
+            User driver = this.userService.getUserById(driverOpt.get().getUser().getId());
+            if (driver == null) {
+                throw new IdInvalidException("Driver not found with id: " + driverOpt.get().getUser().getId());
+            }
+            order.setDriver(driver);
         }
-
-        order.setDriver(driver);
         order.setOrderStatus("ASSIGNED");
         order = orderRepository.save(order);
 
         return convertToResOrderDTO(order);
     }
 
-    @Transactional
-    public ResOrderDTO updateOrderStatus(Long orderId, String status) throws IdInvalidException {
-        Order order = getOrderById(orderId);
-        if (order == null) {
-            throw new IdInvalidException("Order not found with id: " + orderId);
-        }
-
-        order.setOrderStatus(status);
-
-        // set deliveredAt when status is DELIVERED
-        if ("DELIVERED".equals(status) && order.getDeliveredAt() == null) {
-            order.setDeliveredAt(Instant.now());
-        }
-        orderEarningsSummaryService.createOrderEarningsSummaryFromOrder(orderId);
-        order = orderRepository.save(order);
-
-        return convertToResOrderDTO(order);
-    }
-
+    // CUSTOMER ACTIONS
     @Transactional
     public Order cancelOrder(Long orderId, String cancellationReason) throws IdInvalidException {
         Order order = getOrderById(orderId);
@@ -479,6 +509,280 @@ public class OrderService {
         order.setOrderStatus("CANCELLED");
         order.setCancellationReason(cancellationReason);
         return orderRepository.save(order);
+    }
+
+    // RESTAURANT ACTIONS
+    @Transactional
+    public ResOrderDTO markOrderAsReady(Long orderId) throws IdInvalidException {
+        Order order = getOrderById(orderId);
+        if (order == null) {
+            throw new IdInvalidException("Order not found with id: " + orderId);
+        }
+
+        if (!"PREPARING".equals(order.getOrderStatus()) && !"DRIVER_ASSIGNED".equals(order.getOrderStatus())) {
+            throw new IdInvalidException(
+                    "Can only mark orders as READY from PREPARING or ACCEPTED status. Current status: "
+                            + order.getOrderStatus());
+        }
+
+        order.setOrderStatus("READY");
+        order = orderRepository.save(order);
+
+        return convertToResOrderDTO(order);
+    }
+
+    @Transactional
+    public ResOrderDTO acceptOrder(Long orderId) throws IdInvalidException {
+        Order order = getOrderById(orderId);
+        if (order == null) {
+            throw new IdInvalidException("Order not found with id: " + orderId);
+        }
+
+        if (!"PENDING".equals(order.getOrderStatus())) {
+            throw new IdInvalidException(
+                    "Can only accept orders with PENDING status. Current status: "
+                            + order.getOrderStatus());
+        }
+
+        order.setOrderStatus("PREPARING");
+        order = orderRepository.save(order);
+        assignDriver(orderId);
+
+        return convertToResOrderDTO(order);
+    }
+
+    @Transactional
+    public ResOrderDTO rejectOrder(Long orderId, String rejectionReason) throws IdInvalidException {
+        Order order = getOrderById(orderId);
+        if (order == null) {
+            throw new IdInvalidException("Order not found with id: " + orderId);
+        }
+
+        if (!"PENDING".equals(order.getOrderStatus())) {
+            throw new IdInvalidException(
+                    "Can only reject orders with PENDING status. Current status: " + order.getOrderStatus());
+        }
+
+        order.setOrderStatus("REJECTED");
+        order.setCancellationReason(rejectionReason);
+
+        // If payment was already made (WALLET or VNPAY), process refund
+        if ("PAID".equals(order.getPaymentStatus()) &&
+                ("WALLET".equals(order.getPaymentMethod()) || "VNPAY".equals(order.getPaymentMethod()))) {
+            // TODO: Process refund to customer wallet
+            order.setPaymentStatus("REFUNDED");
+        }
+
+        order = orderRepository.save(order);
+
+        return convertToResOrderDTO(order);
+    }
+
+    // DRIVER ACTIONS
+    @Transactional
+    public ResOrderDTO acceptOrderByDriver(Long orderId) throws IdInvalidException {
+        Order order = getOrderById(orderId);
+        if (order == null) {
+            throw new IdInvalidException("Order not found with id: " + orderId);
+        }
+
+        // Get current driver from JWT token
+        String currentUserEmail = com.example.FoodDelivery.util.SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("User not authenticated"));
+
+        User driver = this.userService.handleGetUserByUsername(currentUserEmail);
+        if (driver == null) {
+            throw new IdInvalidException("Driver not found with email: " + currentUserEmail);
+        }
+
+        // Check if order has this driver assigned
+        if (order.getDriver() == null || !order.getDriver().getId().equals(driver.getId())) {
+            throw new IdInvalidException("This order is not assigned to you");
+        }
+
+        if ("COD".equals(order.getPaymentMethod())) {
+            Map<String, Object> paymentResult = paymentService.processCODPaymentOnDelivery(order);
+            if (!(Boolean) paymentResult.get("success")) {
+                // Rollback order creation if payment fails
+                orderRepository.delete(order);
+                throw new IdInvalidException((String) paymentResult.get("message"));
+            }
+        }
+
+        // Update status to DRIVER_ASSIGNED
+        order.setOrderStatus("DRIVER_ASSIGNED");
+        order = orderRepository.save(order);
+
+        return convertToResOrderDTO(order);
+    }
+
+    @Transactional
+    public ResOrderDTO rejectOrderByDriver(Long orderId, String rejectionReason)
+            throws IdInvalidException {
+        Order order = getOrderById(orderId);
+        if (order == null) {
+            throw new IdInvalidException("Order not found with id: " + orderId);
+        }
+
+        // Get current driver from JWT token
+        String currentUserEmail = com.example.FoodDelivery.util.SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("User not authenticated"));
+
+        User driver = this.userService.handleGetUserByUsername(currentUserEmail);
+        if (driver == null) {
+            throw new IdInvalidException("Driver not found with email: " + currentUserEmail);
+        }
+
+        // Check if order has this driver assigned
+        if (order.getDriver() == null || !order.getDriver().getId().equals(driver.getId())) {
+            throw new IdInvalidException("This order is not assigned to you");
+        }
+
+        // Save rejection record
+        OrderDriverRejection rejection = OrderDriverRejection.builder()
+                .order(order)
+                .driver(driver)
+                .rejectionReason(rejectionReason)
+                .rejectedAt(Instant.now())
+                .build();
+        orderDriverRejectionRepository.save(rejection);
+
+        // Get list of all rejected driver IDs for this order
+        List<Long> rejectedDriverIds = orderDriverRejectionRepository.findRejectedDriverIdsByOrderId(orderId);
+
+        // Find next available driver excluding rejected ones
+        if (order.getPaymentMethod() == "COD") {
+            Optional<DriverProfile> nextDriverProfileOpt;
+            if (rejectedDriverIds.isEmpty()) {
+                nextDriverProfileOpt = driverProfileRepository
+                        .findFirstAvailableDriverByCodLimit(order.getTotalAmount());
+            } else {
+                nextDriverProfileOpt = driverProfileRepository.findFirstAvailableDriverByCodLimitExcluding(
+                        order.getTotalAmount(), rejectedDriverIds);
+                if (!nextDriverProfileOpt.isPresent()) {
+                    throw new IdInvalidException("No available driver found for this order");
+                }
+            }
+
+            if (nextDriverProfileOpt.isPresent()) {
+                // Assign to next driver
+                DriverProfile nextDriverProfile = nextDriverProfileOpt.get();
+                order.setDriver(nextDriverProfile.getUser());
+                // Keep status as READY or current status for next driver to accept
+                if ("DRIVER_ASSIGNED".equals(order.getOrderStatus())) {
+                    order.setOrderStatus("READY");
+                }
+            } else {
+                // No more available drivers, set driver to null
+                order.setDriver(null);
+                order.setOrderStatus("READY");
+            }
+        } else {
+            Optional<DriverProfile> nextDriverProfileOpt;
+            if (rejectedDriverIds.isEmpty()) {
+                nextDriverProfileOpt = driverProfileRepository.findFirstAvailableDriver();
+            } else {
+                nextDriverProfileOpt = driverProfileRepository.findFirstAvailableDriverExcluding(rejectedDriverIds);
+                if (!nextDriverProfileOpt.isPresent()) {
+                    throw new IdInvalidException("No available driver found for this order");
+                }
+            }
+
+            if (nextDriverProfileOpt.isPresent()) {
+                // Assign to next driver
+                DriverProfile nextDriverProfile = nextDriverProfileOpt.get();
+                order.setDriver(nextDriverProfile.getUser());
+                // Keep status as READY or current status for next driver to accept
+                if ("DRIVER_ASSIGNED".equals(order.getOrderStatus())) {
+                    order.setOrderStatus("READY");
+                }
+            } else {
+                // No more available drivers, set driver to null
+                order.setDriver(null);
+                order.setOrderStatus("READY");
+            }
+        }
+
+        order = orderRepository.save(order);
+
+        return convertToResOrderDTO(order);
+    }
+
+    @Transactional
+    public ResOrderDTO markOrderAsPickedUp(Long orderId) throws IdInvalidException {
+        Order order = getOrderById(orderId);
+        if (order == null) {
+            throw new IdInvalidException("Order not found with id: " + orderId);
+        }
+
+        // Get current driver from JWT token
+        String currentUserEmail = com.example.FoodDelivery.util.SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("User not authenticated"));
+
+        User driver = this.userService.handleGetUserByUsername(currentUserEmail);
+        if (driver == null) {
+            throw new IdInvalidException("Driver not found with email: " + currentUserEmail);
+        }
+
+        // Check if order has this driver assigned
+        if (order.getDriver() == null || !order.getDriver().getId().equals(driver.getId())) {
+            throw new IdInvalidException("This order is not assigned to you");
+        }
+
+        if (!"READY".equals(order.getOrderStatus()) && !"DRIVER_ASSIGNED".equals(order.getOrderStatus())) {
+            throw new IdInvalidException(
+                    "Can only mark orders as PICKED_UP from READY or DRIVER_ASSIGNED status. Current status: "
+                            + order.getOrderStatus());
+        }
+
+        order.setOrderStatus("PICKED_UP");
+        order = orderRepository.save(order);
+
+        return convertToResOrderDTO(order);
+    }
+
+    @Transactional
+    public ResOrderDTO markOrderAsDelivered(Long orderId) throws IdInvalidException {
+        Order order = getOrderById(orderId);
+        if (order == null) {
+            throw new IdInvalidException("Order not found with id: " + orderId);
+        }
+
+        // Get current driver from JWT token
+        String currentUserEmail = com.example.FoodDelivery.util.SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("User not authenticated"));
+
+        User driver = this.userService.handleGetUserByUsername(currentUserEmail);
+        if (driver == null) {
+            throw new IdInvalidException("Driver not found with email: " + currentUserEmail);
+        }
+
+        // Check if order has this driver assigned
+        if (order.getDriver() == null || !order.getDriver().getId().equals(driver.getId())) {
+            throw new IdInvalidException("This order is not assigned to you");
+        }
+
+        if (!"PICKED_UP".equals(order.getOrderStatus())) {
+            throw new IdInvalidException(
+                    "Can only mark orders as DELIVERED from PICKED_UP status. Current status: "
+                            + order.getOrderStatus());
+        }
+
+        order.setOrderStatus("DELIVERED");
+        if (order.getDeliveredAt() == null) {
+            order.setDeliveredAt(Instant.now());
+        }
+
+        if ("COD".equals(order.getPaymentMethod())) {
+            order.setPaymentStatus("PAID");
+        }
+
+        // Create earnings summary when order is delivered
+        orderEarningsSummaryService.createOrderEarningsSummaryFromOrder(orderId);
+
+        order = orderRepository.save(order);
+
+        return convertToResOrderDTO(order);
     }
 
     public ResultPaginationDTO getAllOrders(Specification<Order> spec, Pageable pageable) {

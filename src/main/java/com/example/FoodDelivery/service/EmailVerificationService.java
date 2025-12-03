@@ -7,6 +7,8 @@ import java.util.Random;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.example.FoodDelivery.domain.EmailVerification;
 import com.example.FoodDelivery.domain.User;
@@ -14,6 +16,7 @@ import com.example.FoodDelivery.repository.EmailVerificationRepository;
 import com.example.FoodDelivery.repository.UserRepository;
 import com.example.FoodDelivery.util.error.IdInvalidException;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
@@ -69,10 +72,12 @@ public class EmailVerificationService {
 
         // Send email
         try {
+            String baseUrl = getBaseUrl();
             emailService.sendVerificationEmail(
                     user.getEmail(),
                     user.getName() != null ? user.getName() : "User",
-                    otpCode);
+                    otpCode,
+                    baseUrl);
             log.info("Verification OTP email sent successfully to: {}", user.getEmail());
         } catch (Exception e) {
             log.error("Failed to send verification email to: {}", user.getEmail(), e);
@@ -161,9 +166,11 @@ public class EmailVerificationService {
 
         // Send welcome email
         try {
+            String baseUrl = getBaseUrl();
             emailService.sendWelcomeEmail(
                     user.getEmail(),
-                    user.getName() != null ? user.getName() : "User");
+                    user.getName() != null ? user.getName() : "User",
+                    baseUrl);
         } catch (Exception e) {
             log.warn("Failed to send welcome email to: {}", user.getEmail(), e);
             // Don't throw exception, welcome email is not critical
@@ -212,5 +219,41 @@ public class EmailVerificationService {
     private String generateOtp() {
         int otp = 100000 + random.nextInt(900000);
         return String.valueOf(otp);
+    }
+
+    /**
+     * Get base URL from current HTTP request
+     * Works for both localhost and production
+     * 
+     * @return Base URL (e.g., "http://localhost:8080" or
+     *         "http://113.177.135.214:38284")
+     */
+    private String getBaseUrl() {
+        try {
+            ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder
+                    .getRequestAttributes();
+            if (attributes != null) {
+                HttpServletRequest request = attributes.getRequest();
+                String scheme = request.getScheme();
+                String serverName = request.getServerName();
+                int serverPort = request.getServerPort();
+
+                StringBuilder baseUrl = new StringBuilder();
+                baseUrl.append(scheme).append("://").append(serverName);
+
+                // Only add port if it's not default (80 for http, 443 for https)
+                if (("http".equals(scheme) && serverPort != 80) ||
+                        ("https".equals(scheme) && serverPort != 443)) {
+                    baseUrl.append(":").append(serverPort);
+                }
+
+                return baseUrl.toString();
+            }
+        } catch (Exception e) {
+            log.warn("Could not extract base URL from request: {}", e.getMessage());
+        }
+
+        // Fallback to localhost if no request context available
+        return "http://localhost:8080";
     }
 }

@@ -206,6 +206,19 @@ public class DriverProfileService {
     }
 
     /**
+     * Get first available driver with COD limit >= order amount
+     * Filters by status (ONLINE/AVAILABLE) and returns driver with highest rating
+     * 
+     * @param orderAmount Order total amount
+     * @return Driver profile with highest rating or null if none found
+     */
+    public ResDriverProfileDTO getFirstAvailableDriverByCodLimit(java.math.BigDecimal orderAmount) {
+        java.util.Optional<DriverProfile> driverOpt = driverProfileRepository
+                .findFirstAvailableDriverByCodLimit(orderAmount);
+        return driverOpt.map(this::convertToResDriverProfileDTO).orElse(null);
+    }
+
+    /**
      * Convert DriverProfile to ResDriverProfileDTO
      */
     public ResDriverProfileDTO convertToResDriverProfileDTO(DriverProfile profile) {

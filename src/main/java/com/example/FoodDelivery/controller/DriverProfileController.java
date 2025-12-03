@@ -1,6 +1,11 @@
 package com.example.FoodDelivery.controller;
 
+import java.math.BigDecimal;
+import java.util.List;
+
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.turkraft.springfilter.boot.Filter;
@@ -11,6 +16,9 @@ import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
 import com.example.FoodDelivery.service.DriverProfileService;
 import com.example.FoodDelivery.util.annotation.ApiMessage;
 import com.example.FoodDelivery.util.error.IdInvalidException;
+
+import java.math.BigDecimal;
+import java.util.List;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -87,5 +95,16 @@ public class DriverProfileController {
         }
         driverProfileService.deleteDriverProfile(id);
         return ResponseEntity.ok().body(null);
+    }
+
+    @GetMapping("/driver-profiles/available-by-cod-limit")
+    @ApiMessage("Get first available driver by COD limit")
+    public ResponseEntity<ResDriverProfileDTO> getFirstAvailableDriverByCodLimit(
+            @RequestParam(name = "orderAmount") BigDecimal orderAmount) throws IdInvalidException {
+        ResDriverProfileDTO driver = driverProfileService.getFirstAvailableDriverByCodLimit(orderAmount);
+        if (driver == null) {
+            throw new IdInvalidException("No available driver found with COD limit >= " + orderAmount);
+        }
+        return ResponseEntity.ok(driver);
     }
 }
