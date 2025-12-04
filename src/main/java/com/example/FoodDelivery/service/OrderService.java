@@ -392,7 +392,7 @@ public class OrderService {
     }
 
     @Transactional
-    public Order updateOrder(Order order) throws IdInvalidException {
+    public ResOrderDTO updateOrder(Order order) throws IdInvalidException {
         // check id
         Order currentOrder = getOrderById(order.getId());
         if (currentOrder == null) {
@@ -448,12 +448,8 @@ public class OrderService {
             currentOrder.setCancellationReason(order.getCancellationReason());
         }
 
-        return orderRepository.save(currentOrder);
-    }
-
-    public ResOrderDTO updateOrderDTO(Order order) throws IdInvalidException {
-        Order updatedOrder = updateOrder(order);
-        return convertToResOrderDTO(updatedOrder);
+        currentOrder = orderRepository.save(currentOrder);
+        return convertToResOrderDTO(currentOrder);
     }
 
     @Transactional
@@ -742,7 +738,7 @@ public class OrderService {
     }
 
     @Transactional
-    public ResOrderDTO markOrderAsDelivered(Long orderId) throws IdInvalidException {
+    public ResOrderDTO markOrderAsArrived(Long orderId) throws IdInvalidException {
         Order order = getOrderById(orderId);
         if (order == null) {
             throw new IdInvalidException("Order not found with id: " + orderId);
@@ -764,7 +760,40 @@ public class OrderService {
 
         if (!"PICKED_UP".equals(order.getOrderStatus())) {
             throw new IdInvalidException(
-                    "Can only mark orders as DELIVERED from PICKED_UP status. Current status: "
+                    "Can only mark orders as ARRIVED from PICKED_UP status. Current status: "
+                            + order.getOrderStatus());
+        }
+
+        order.setOrderStatus("ARRIVED");
+        order = orderRepository.save(order);
+
+        return convertToResOrderDTO(order);
+    }
+
+    @Transactional
+    public ResOrderDTO markOrderAsDelivered(Long orderId) throws IdInvalidException {
+        Order order = getOrderById(orderId);
+        if (order == null) {
+            throw new IdInvalidException("Order not found with id: " + orderId);
+        }
+
+        // Get current driver from JWT token
+        String currentUserEmail = com.example.FoodDelivery.util.SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("User not authenticated"));
+
+        User driver = this.userService.handleGetUserByUsername(currentUserEmail);
+        if (driver == null) {
+            throw new IdInvalidException("Driver not found with email: " + currentUserEmail);
+        }
+
+        // Check if order has this driver assigned
+        if (order.getDriver() == null || !order.getDriver().getId().equals(driver.getId())) {
+            throw new IdInvalidException("This order is not assigned to you");
+        }
+
+        if (!"ARRIVED".equals(order.getOrderStatus())) {
+            throw new IdInvalidException(
+                    "Can only mark orders as DELIVERED from ARRIVED status. Current status: "
                             + order.getOrderStatus());
         }
 
