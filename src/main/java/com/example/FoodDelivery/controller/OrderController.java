@@ -45,18 +45,45 @@ public class OrderController {
             @Valid @RequestBody ReqOrderDTO reqOrderDTO,
             HttpServletRequest request) throws IdInvalidException {
         String clientIp = getClientIp(request);
+        String baseUrl = getBaseUrl(request);
 
-        // Get base URL from request
+        ResOrderDTO createdOrder = orderService.createOrderFromReqDTO(reqOrderDTO, clientIp, baseUrl);
+        return ResponseEntity.status(HttpStatus.CREATED).body(createdOrder);
+    }
+
+    /**
+     * Get base URL from request, handling both localhost and production with
+     * reverse proxy
+     */
+    private String getBaseUrl(HttpServletRequest request) {
+        // Priority 1: Check X-Forwarded headers from reverse proxy (nginx)
+        String forwardedProto = request.getHeader("X-Forwarded-Proto");
+        String forwardedHost = request.getHeader("X-Forwarded-Host");
+
+        if (forwardedProto != null && forwardedHost != null) {
+            // Production: nginx reverse proxy với domain
+            return forwardedProto + "://" + forwardedHost;
+        }
+
+        // Priority 2: Use Host header
+        String hostHeader = request.getHeader("Host");
+        if (hostHeader != null) {
+            String scheme = request.getScheme();
+            // Localhost hoặc direct IP access
+            return scheme + "://" + hostHeader;
+        }
+
+        // Priority 3: Fallback - construct from request
         String scheme = request.getScheme();
         String serverName = request.getServerName();
         int serverPort = request.getServerPort();
+
         String baseUrl = scheme + "://" + serverName;
         if ((scheme.equals("http") && serverPort != 80) || (scheme.equals("https") && serverPort != 443)) {
             baseUrl += ":" + serverPort;
         }
 
-        ResOrderDTO createdOrder = orderService.createOrderFromReqDTO(reqOrderDTO, clientIp, baseUrl);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdOrder);
+        return baseUrl;
     }
 
     /**
