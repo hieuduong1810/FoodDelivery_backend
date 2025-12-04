@@ -72,7 +72,7 @@ public class OrderController {
     @PutMapping("/orders")
     @ApiMessage("Update order")
     public ResponseEntity<ResOrderDTO> updateOrder(@RequestBody Order order) throws IdInvalidException {
-        ResOrderDTO updatedOrder = orderService.updateOrderDTO(order);
+        ResOrderDTO updatedOrder = orderService.updateOrder(order);
         return ResponseEntity.ok(updatedOrder);
     }
 
