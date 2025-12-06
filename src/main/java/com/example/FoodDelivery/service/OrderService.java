@@ -55,6 +55,7 @@ public class OrderService {
     private final OrderDriverRejectionRepository orderDriverRejectionRepository;
     private final PaymentService paymentService;
     private final VNPayService vnPayService;
+    private final WebSocketService webSocketService;
 
     public OrderService(OrderRepository orderRepository, UserService userService,
             RestaurantService restaurantService, DishService dishService,
@@ -62,7 +63,8 @@ public class OrderService {
             DriverProfileRepository driverProfileRepository,
             OrderDriverRejectionRepository orderDriverRejectionRepository,
             PaymentService paymentService,
-            VNPayService vnPayService) {
+            VNPayService vnPayService,
+            WebSocketService webSocketService) {
         this.orderRepository = orderRepository;
         this.userService = userService;
         this.restaurantService = restaurantService;
@@ -73,6 +75,7 @@ public class OrderService {
         this.orderDriverRejectionRepository = orderDriverRejectionRepository;
         this.paymentService = paymentService;
         this.vnPayService = vnPayService;
+        this.webSocketService = webSocketService;
     }
 
     private ResOrderDTO convertToResOrderDTO(Order order) {
@@ -360,9 +363,13 @@ public class OrderService {
 
         savedOrder = orderRepository.save(savedOrder);
 
-        // Process payment based on payment method
+        // Convert to DTO for response and WebSocket notification
         ResOrderDTO orderDTO = convertToResOrderDTO(savedOrder);
 
+        // Notify restaurant about new order via WebSocket
+        webSocketService.notifyRestaurantNewOrder(restaurant.getId(), orderDTO);
+
+        // Process payment based on payment method
         if ("WALLET".equals(savedOrder.getPaymentMethod())) {
             // Process wallet payment
             Map<String, Object> paymentResult = paymentService.processWalletPayment(savedOrder);
@@ -485,10 +492,16 @@ public class OrderService {
             }
             order.setDriver(driver);
         }
-        order.setOrderStatus("ASSIGNED");
+        order.setOrderStatus("DRIVER_ASSIGNED");
         order = orderRepository.save(order);
 
-        return convertToResOrderDTO(order);
+        // Convert to DTO for response
+        ResOrderDTO orderDTO = convertToResOrderDTO(order);
+
+        // Notify driver about order assignment via WebSocket
+        webSocketService.notifyDriverOrderAssigned(order.getDriver().getId(), orderDTO);
+
+        return orderDTO;
     }
 
     // CUSTOMER ACTIONS
@@ -505,7 +518,14 @@ public class OrderService {
 
         order.setOrderStatus("CANCELLED");
         order.setCancellationReason(cancellationReason);
-        return orderRepository.save(order);
+        order = orderRepository.save(order);
+
+        ResOrderDTO orderDTO = convertToResOrderDTO(order);
+
+        // Notify restaurant and driver about cancellation
+        webSocketService.broadcastOrderStatusChange(orderDTO);
+
+        return order;
     }
 
     // RESTAURANT ACTIONS
@@ -525,7 +545,16 @@ public class OrderService {
         order.setOrderStatus("READY");
         order = orderRepository.save(order);
 
-        return convertToResOrderDTO(order);
+        ResOrderDTO orderDTO = convertToResOrderDTO(order);
+
+        // Notify driver and customer that order is ready for pickup
+        if (order.getDriver() != null) {
+            webSocketService.notifyCustomerOrderUpdate(order.getCustomer().getId(),
+                    orderDTO, "Your order is ready for pickup");
+        }
+        webSocketService.broadcastOrderStatusChange(orderDTO);
+
+        return orderDTO;
     }
 
     @Transactional
@@ -543,6 +572,11 @@ public class OrderService {
 
         order.setOrderStatus("PREPARING");
         order = orderRepository.save(order);
+
+        // Notify customer about order acceptance
+        webSocketService.notifyCustomerOrderUpdate(order.getCustomer().getId(),
+                convertToResOrderDTO(order), "Your order has been accepted and is being prepared");
+
         assignDriver(orderId);
 
         return convertToResOrderDTO(order);
@@ -572,7 +606,13 @@ public class OrderService {
 
         order = orderRepository.save(order);
 
-        return convertToResOrderDTO(order);
+        ResOrderDTO orderDTO = convertToResOrderDTO(order);
+
+        // Notify customer about order rejection
+        webSocketService.notifyCustomerOrderUpdate(order.getCustomer().getId(),
+                orderDTO, "Your order has been rejected by the restaurant");
+
+        return orderDTO;
     }
 
     // DRIVER ACTIONS
@@ -610,7 +650,14 @@ public class OrderService {
         order.setOrderStatus("DRIVER_ASSIGNED");
         order = orderRepository.save(order);
 
-        return convertToResOrderDTO(order);
+        ResOrderDTO orderDTO = convertToResOrderDTO(order);
+
+        // Notify customer and restaurant about driver acceptance
+        webSocketService.notifyCustomerOrderUpdate(order.getCustomer().getId(),
+                orderDTO, "Driver has accepted your order");
+        webSocketService.broadcastOrderStatusChange(orderDTO);
+
+        return orderDTO;
     }
 
     @Transactional
@@ -702,7 +749,16 @@ public class OrderService {
 
         order = orderRepository.save(order);
 
-        return convertToResOrderDTO(order);
+        ResOrderDTO orderDTO = convertToResOrderDTO(order);
+
+        // Notify customer and restaurant about driver rejection and reassignment
+        if (order.getDriver() != null) {
+            webSocketService.notifyDriverOrderAssigned(order.getDriver().getId(), orderDTO);
+        }
+        webSocketService.notifyCustomerOrderUpdate(order.getCustomer().getId(),
+                orderDTO, "Looking for another driver for your order");
+
+        return orderDTO;
     }
 
     @Transactional
@@ -735,7 +791,14 @@ public class OrderService {
         order.setOrderStatus("PICKED_UP");
         order = orderRepository.save(order);
 
-        return convertToResOrderDTO(order);
+        ResOrderDTO orderDTO = convertToResOrderDTO(order);
+
+        // Notify customer about order pickup
+        webSocketService.notifyCustomerOrderUpdate(order.getCustomer().getId(),
+                orderDTO, "Your order has been picked up and is on the way");
+        webSocketService.broadcastOrderStatusChange(orderDTO);
+
+        return orderDTO;
     }
 
     @Transactional
@@ -768,7 +831,14 @@ public class OrderService {
         order.setOrderStatus("ARRIVED");
         order = orderRepository.save(order);
 
-        return convertToResOrderDTO(order);
+        ResOrderDTO orderDTO = convertToResOrderDTO(order);
+
+        // Notify customer about arrival
+        webSocketService.notifyCustomerOrderUpdate(order.getCustomer().getId(),
+                orderDTO, "Your order has arrived!");
+        webSocketService.broadcastOrderStatusChange(orderDTO);
+
+        return orderDTO;
     }
 
     @Transactional
@@ -812,7 +882,14 @@ public class OrderService {
 
         order = orderRepository.save(order);
 
-        return convertToResOrderDTO(order);
+        ResOrderDTO orderDTO = convertToResOrderDTO(order);
+
+        // Notify all parties about successful delivery
+        webSocketService.notifyCustomerOrderUpdate(order.getCustomer().getId(),
+                orderDTO, "Your order has been delivered successfully!");
+        webSocketService.broadcastOrderStatusChange(orderDTO);
+
+        return orderDTO;
     }
 
     public ResultPaginationDTO getAllOrders(Specification<Order> spec, Pageable pageable) {

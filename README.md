@@ -65,6 +65,10 @@
 - **Wallet Transactions** - Lịch sử giao dịch đầy đủ với trạng thái
 
 ### 🛠️ Technical Features
+- **WebSocket Real-time Communication** - STOMP protocol cho real-time updates
+  - 📡 **Order Status Notifications** - Thông báo real-time cho Customer, Restaurant, Driver khi đơn hàng thay đổi trạng thái
+  - 💬 **Chat System** - Chat trực tiếp giữa Driver và Customer cho mỗi đơn hàng
+  - 🔔 **Typing Indicators** - Hiển thị khi người dùng đang nhập tin nhắn
 - **Dynamic Client IP Extraction** - Tự động lấy IP từ request (X-Forwarded-For, X-Real-IP)
 - **Scheduled Jobs** - Auto cleanup expired VNPay orders (15 minutes)
 - **Circular Dependency Resolution** - @Lazy injection pattern
@@ -85,6 +89,7 @@
 - **Spring Security** - Authentication & Authorization
 - **Spring Data JPA** - ORM với Hibernate implementation
 - **Spring Mail** - Email service integration
+- **Spring WebSocket** - Real-time bidirectional communication với STOMP protocol
 
 ### Database & Caching
 - **MariaDB 11.2** - Primary database
@@ -232,6 +237,55 @@ POST   /api/v1/wallets/{id}/withdraw       # Rút tiền
 GET    /api/v1/wallet-transactions         # Lịch sử giao dịch
 ```
 
+### WebSocket Endpoints
+```http
+# Connection Endpoint
+WS     /ws                                  # WebSocket connection với SockJS fallback
+
+# Subscribe Destinations (Client → Server)
+SUBSCRIBE /topic/restaurant/{restaurantId}/orders    # Nhà hàng nhận thông báo đơn mới
+SUBSCRIBE /topic/driver/{driverId}/orders            # Tài xế nhận thông báo được assign
+SUBSCRIBE /topic/customer/{customerId}/orders        # Khách hàng nhận cập nhật đơn hàng
+SUBSCRIBE /topic/chat/order/{orderId}                # Chat theo từng đơn hàng
+SUBSCRIBE /topic/chat/order/{orderId}/typing         # Typing indicator
+
+# Send Destinations (Client → Server)
+SEND   /app/chat/{orderId}                  # Gửi tin nhắn chat
+SEND   /app/typing/{orderId}                # Gửi typing indicator
+```
+
+**WebSocket Usage Example:**
+```javascript
+// Connect với SockJS + Stomp.js
+const socket = new SockJS('http://localhost:8080/ws');
+const stompClient = Stomp.over(socket);
+
+stompClient.connect({}, function(frame) {
+  // Subscribe nhận thông báo đơn hàng
+  stompClient.subscribe('/topic/customer/4/orders', function(notification) {
+    const orderUpdate = JSON.parse(notification.body);
+    console.log('Order status:', orderUpdate.type);
+  });
+  
+  // Subscribe chat cho đơn hàng #30
+  stompClient.subscribe('/topic/chat/order/30', function(message) {
+    const chatMsg = JSON.parse(message.body);
+    displayMessage(chatMsg);
+  });
+  
+  // Gửi tin nhắn chat
+  const chatMessage = {
+    orderId: 30,
+    senderId: 4,
+    senderName: "Customer 4",
+    senderType: "CUSTOMER",
+    message: "Hello driver!",
+    messageType: "TEXT"
+  };
+  stompClient.send('/app/chat/30', {}, JSON.stringify(chatMessage));
+});
+```
+
 Xem full API documentation tại **Swagger UI** sau khi start server.
 
 ---
@@ -243,17 +297,22 @@ eatzy_backend/
 ├── src/main/java/com/example/FoodDelivery/
 │   ├── config/              # Configuration classes
 │   │   ├── SecurityConfiguration.java
+│   │   ├── WebSocketConfig.java
 │   │   ├── OpenAPIConfig.java
 │   │   └── CloudinaryConfig.java
 │   ├── controller/          # REST Controllers
 │   │   ├── AuthController.java
 │   │   ├── OrderController.java
 │   │   ├── PaymentController.java
+│   │   ├── ChatController.java      # WebSocket chat handler
 │   │   └── ...
 │   ├── domain/              # JPA Entities
 │   │   ├── User.java
 │   │   ├── Order.java
 │   │   ├── Restaurant.java
+│   │   ├── res/websocket/   # WebSocket DTOs
+│   │   │   ├── OrderNotification.java
+│   │   │   └── ChatMessage.java
 │   │   └── ...
 │   ├── repository/          # Spring Data JPA Repositories
 │   ├── service/             # Business Logic Layer
@@ -261,6 +320,7 @@ eatzy_backend/
 │   │   ├── PaymentService.java
 │   │   ├── VNPayService.java
 │   │   ├── EmailService.java
+│   │   ├── WebSocketService.java    # WebSocket notification service
 │   │   └── ...
 │   ├── util/                # Utilities & Helpers
 │   │   ├── SecurityUtil.java
@@ -270,6 +330,8 @@ eatzy_backend/
 ├── src/main/resources/
 │   ├── application.properties
 │   └── static/
+├── test-chat.html           # WebSocket chat test client
+├── test-websocket.html      # WebSocket notification test client
 ├── docker-compose.yml
 ├── Dockerfile
 ├── build.gradle.kts
@@ -394,23 +456,65 @@ Admin receives: 15% subtotal + 20% delivery fee (commission)
 
 ```
 PENDING
-   ↓ (Restaurant accept)
+   ↓ (Restaurant accept) → 🔔 Notify Customer
 PREPARING
-   ↓ (Driver assigned)
+   ↓ (Driver assigned) → 🔔 Notify Driver & Customer
 ASSIGNED
-   ↓ (Restaurant ready)
+   ↓ (Restaurant ready) → 🔔 Notify Driver & Customer
 READY
-   ↓ (Driver accept)
+   ↓ (Driver accept) → 🔔 Notify Customer & Restaurant
 DRIVER_ASSIGNED
-   ↓ (Driver pickup)
+   ↓ (Driver pickup) → 🔔 Notify Customer
 PICKED_UP
-   ↓ (Driver arrive)
+   ↓ (Driver arrive) → 🔔 Notify Customer
 ARRIVED
-   ↓ (Driver deliver)
+   ↓ (Driver deliver) → 🔔 Notify Customer & Restaurant
 DELIVERED (✓ Auto-distribute earnings)
 
 CANCELLED (✗ Can cancel anytime before PICKED_UP)
 REJECTED (✗ Restaurant rejects)
+```
+
+**Real-time Notifications:**
+- Mỗi lần đơn hàng thay đổi trạng thái, WebSocket tự động gửi notification
+- Restaurant nhận thông báo qua `/topic/restaurant/{id}/orders`
+- Driver nhận thông báo qua `/topic/driver/{id}/orders`
+- Customer nhận thông báo qua `/topic/customer/{id}/orders`
+
+---
+
+## 💬 WebSocket Chat System
+
+### Chat Flow
+```
+Customer ←→ WebSocket Server ←→ Driver
+     ↓                              ↓
+Subscribe /topic/chat/order/30
+     ↓                              ↓
+Send message to /app/chat/30
+     ↓                              ↓
+Both receive via /topic/chat/order/30
+```
+
+### Chat Features
+- **Per-Order Chat Room** - Mỗi đơn hàng có 1 chat room riêng
+- **Real-time Messaging** - Tin nhắn hiển thị ngay lập tức
+- **Typing Indicator** - Hiển thị khi người khác đang nhập
+- **Message Types** - TEXT, IMAGE, LOCATION (extensible)
+- **Broadcast Chat** - Sử dụng `/topic` cho simple implementation
+
+### Integration Points
+```java
+// OrderService tự động gửi notification khi:
+- createOrder() → notifyRestaurantNewOrder()
+- acceptOrder() → notifyCustomerOrderUpdate()
+- assignDriver() → notifyDriverOrderAssigned()
+- acceptOrderByDriver() → broadcastOrderStatusChange()
+- markOrderAsReady() → notifyCustomerOrderUpdate()
+- markOrderAsPickedUp() → (implicit broadcast)
+- markOrderAsArrived() → notifyCustomerOrderUpdate()
+- markOrderAsDelivered() → broadcastOrderStatusChange()
+- cancelOrder() → broadcastOrderStatusChange()
 ```
 
 ---
@@ -421,6 +525,31 @@ REJECTED (✗ Restaurant rejects)
 1. Start application
 2. Navigate to http://localhost:8080/swagger-ui/index.html
 3. Test endpoints interactively
+
+### Testing WebSocket Features
+
+**1. Order Notifications**
+- Open `test-websocket.html` in browser (via Live Server or http-server)
+- Enter Restaurant ID / Driver ID / Customer ID
+- Subscribe to appropriate topic
+- Create/update orders via API
+- See real-time notifications
+
+**2. Chat System**
+- Open `test-chat.html` in browser
+- Enter Order ID, Customer ID, Driver ID
+- Click "Connect Both" to simulate both users
+- Send messages between customer and driver
+- Test typing indicators
+
+**WebSocket Testing Tools:**
+```bash
+# Serve HTML test files
+npx http-server -p 3000 -c-1
+
+# Or use VS Code Live Server extension
+# Right-click test-chat.html → Open with Live Server
+```
 
 ### Testing Payment Integration
 - **VNPay Sandbox**: Use test card numbers from VNPay documentation
@@ -459,6 +588,36 @@ DB_URL=jdbc:mariadb://localhost:3307/fooddelivery
 ```java
 // Fixed with @Lazy annotation
 public OrderService(@Lazy PaymentService paymentService) {...}
+```
+
+**5. WebSocket Connection Failed**
+```bash
+# Ensure WebSocket endpoint is accessible
+curl http://localhost:8080/ws/info
+
+# Check CORS settings in WebSocketConfig
+# Test HTML files must be served via HTTP (not file://)
+# Use Live Server or http-server
+
+# Debug client connection
+# Check browser console for WebSocket errors
+# Verify subscribe destinations match server topics
+```
+
+**6. Chat Messages Not Displaying**
+```bash
+# Common issue: Path mismatch
+# Server sends to: /topic/chat/order/{orderId}
+# Client must subscribe to: /topic/chat/order/{orderId}
+
+# Check console logs:
+# "Broadcasted chat message to topic..." → Server OK
+# "Customer received message..." → Client OK
+
+# If server logs show message sent but client doesn't receive:
+# - Verify subscription path matches exactly
+# - Check order ID is correct
+# - Restart both server and client
 ```
 
 ---

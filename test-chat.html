@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Chat Test - Driver & Customer</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .chat-box {
+            flex: 1;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            height: 600px;
+        }
+
+        .header {
+            padding: 15px;
+            background: #4CAF50;
+            color: white;
+            border-radius: 10px 10px 0 0;
+            font-weight: bold;
+        }
+
+        .driver-header {
+            background: #2196F3;
+        }
+
+        .status {
+            padding: 10px 15px;
+            background: #f9f9f9;
+            border-bottom: 1px solid #ddd;
+            font-size: 12px;
+        }
+
+        .connected {
+            color: green;
+        }
+
+        .disconnected {
+            color: red;
+        }
+
+        .messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background: #fafafa;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+
+        .sent {
+            background: #DCF8C6;
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .received {
+            background: white;
+            border: 1px solid #ddd;
+        }
+
+        .message strong {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+
+        .message .time {
+            font-size: 10px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .typing-indicator {
+            font-style: italic;
+            color: #666;
+            font-size: 12px;
+            padding: 5px 15px;
+            background: #f0f0f0;
+        }
+
+        .input-area {
+            padding: 15px;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            outline: none;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls label {
+            display: inline-block;
+            width: 100px;
+            font-weight: bold;
+        }
+
+        .controls input {
+            padding: 5px 10px;
+            margin-right: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 80px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1 style="text-align: center;">🍔 Food Delivery Chat Test</h1>
+
+    <div class="controls">
+        <label>Order ID:</label>
+        <input type="number" id="orderId" value="1" />
+
+        <label>Customer ID:</label>
+        <input type="number" id="customerId" value="1" />
+
+        <label>Driver ID:</label>
+        <input type="number" id="driverId" value="2" />
+
+        <button onclick="connectBoth()">Connect Both</button>
+        <button onclick="disconnectBoth()">Disconnect Both</button>
+    </div>
+
+    <div class="container">
+        <!-- Customer Chat -->
+        <div class="chat-box">
+            <div class="header">👤 Customer Chat</div>
+            <div class="status">
+                Status: <span id="customerStatus" class="disconnected">Disconnected</span>
+            </div>
+            <div id="customerMessages" class="messages"></div>
+            <div id="customerTyping" class="typing-indicator" style="display: none;">Driver is typing...</div>
+            <div class="input-area">
+                <input type="text" id="customerInput" placeholder="Type a message..."
+                    onkeypress="handleCustomerKeyPress(event)" onkeyup="handleCustomerTyping()" />
+                <button onclick="sendCustomerMessage()" id="customerSendBtn" disabled>Send</button>
+            </div>
+        </div>
+
+        <!-- Driver Chat -->
+        <div class="chat-box">
+            <div class="header driver-header">🚗 Driver Chat</div>
+            <div class="status">
+                Status: <span id="driverStatus" class="disconnected">Disconnected</span>
+            </div>
+            <div id="driverMessages" class="messages"></div>
+            <div id="driverTyping" class="typing-indicator" style="display: none;">Customer is typing...</div>
+            <div class="input-area">
+                <input type="text" id="driverInput" placeholder="Type a message..."
+                    onkeypress="handleDriverKeyPress(event)" onkeyup="handleDriverTyping()" />
+                <button onclick="sendDriverMessage()" id="driverSendBtn" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let customerClient = null;
+        let driverClient = null;
+        let typingTimeout = null;
+
+        function connectBoth() {
+            const orderId = document.getElementById('orderId').value;
+            const customerId = document.getElementById('customerId').value;
+            const driverId = document.getElementById('driverId').value;
+
+            connectCustomer(orderId, customerId);
+            connectDriver(orderId, driverId);
+        }
+
+        function connectCustomer(orderId, customerId) {
+            const socket = new SockJS('http://localhost:8080/ws');
+            customerClient = Stomp.over(socket);
+
+            // ===== QUEUE VERSION (requires login header) =====
+            // const connectHeaders = {
+            //     login: customerId.toString()
+            // };
+
+            // ===== TOPIC VERSION (no authentication needed) =====
+            const connectHeaders = {};
+
+            customerClient.connect(connectHeaders, function (frame) {
+                console.log('Customer connected: ' + frame);
+                document.getElementById('customerStatus').textContent = 'Connected';
+                document.getElementById('customerStatus').className = 'connected';
+                document.getElementById('customerSendBtn').disabled = false;
+
+                // ===== QUEUE VERSION =====
+                // customerClient.subscribe(`/user/queue/chat/order/${orderId}`, function (message) { ... });
+
+                // ===== TOPIC VERSION =====
+                // Subscribe to chat messages (broadcast to all subscribers)
+                customerClient.subscribe(`/topic/chat/order/${orderId}`, function (message) {
+                    console.log('Customer received message:', message.body);
+                    const chatMsg = JSON.parse(message.body);
+                    console.log('Parsed chat message:', chatMsg);
+                    displayMessage('customer', chatMsg, customerId);
+                });
+
+                // Subscribe to typing indicator
+                customerClient.subscribe(`/topic/chat/order/${orderId}/typing`, function (message) {
+                    const typingMsg = JSON.parse(message.body);
+                    if (typingMsg.senderId != customerId) {
+                        showTyping('customer');
+                    }
+                });
+            }, function (error) {
+                console.error('Customer connection error:', error);
+            });
+        }
+
+        function connectDriver(orderId, driverId) {
+            const socket = new SockJS('http://localhost:8080/ws');
+            driverClient = Stomp.over(socket);
+
+            // ===== QUEUE VERSION (requires login header) =====
+            // const connectHeaders = {
+            //     login: driverId.toString()
+            // };
+
+            // ===== TOPIC VERSION (no authentication needed) =====
+            const connectHeaders = {};
+
+            driverClient.connect(connectHeaders, function (frame) {
+                console.log('Driver connected: ' + frame);
+                document.getElementById('driverStatus').textContent = 'Connected';
+                document.getElementById('driverStatus').className = 'connected';
+                document.getElementById('driverSendBtn').disabled = false;
+
+                // ===== QUEUE VERSION =====
+                // driverClient.subscribe(`/user/queue/chat/order/${orderId}`, function (message) { ... });
+
+                // ===== TOPIC VERSION =====
+                // Subscribe to chat messages (broadcast to all subscribers)
+                driverClient.subscribe(`/topic/chat/order/${orderId}`, function (message) {
+                    console.log('Driver received message:', message.body);
+                    const chatMsg = JSON.parse(message.body);
+                    console.log('Parsed chat message:', chatMsg);
+                    displayMessage('driver', chatMsg, driverId);
+                });
+
+                // Subscribe to typing indicator
+                driverClient.subscribe(`/topic/chat/order/${orderId}/typing`, function (message) {
+                    const typingMsg = JSON.parse(message.body);
+                    if (typingMsg.senderId != driverId) {
+                        showTyping('driver');
+                    }
+                });
+            }, function (error) {
+                console.error('Driver connection error:', error);
+            });
+        }
+
+        function sendCustomerMessage() {
+            const orderId = document.getElementById('orderId').value;
+            const customerId = document.getElementById('customerId').value;
+            const input = document.getElementById('customerInput');
+            const message = input.value.trim();
+
+            if (!message || !customerClient) return;
+
+            const chatMessage = {
+                orderId: parseInt(orderId),
+                senderId: parseInt(customerId),
+                senderName: "Customer " + customerId,
+                senderType: "CUSTOMER",
+                message: message,
+                messageType: "TEXT"
+            };
+
+            customerClient.send(`/app/chat/${orderId}`, {}, JSON.stringify(chatMessage));
+            input.value = '';
+        }
+
+        function sendDriverMessage() {
+            const orderId = document.getElementById('orderId').value;
+            const driverId = document.getElementById('driverId').value;
+            const input = document.getElementById('driverInput');
+            const message = input.value.trim();
+
+            if (!message || !driverClient) return;
+
+            const chatMessage = {
+                orderId: parseInt(orderId),
+                senderId: parseInt(driverId),
+                senderName: "Driver " + driverId,
+                senderType: "DRIVER",
+                message: message,
+                messageType: "TEXT"
+            };
+
+            driverClient.send(`/app/chat/${orderId}`, {}, JSON.stringify(chatMessage));
+            input.value = '';
+        }
+
+        function handleCustomerTyping() {
+            if (!customerClient) return;
+
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                const orderId = document.getElementById('orderId').value;
+                const customerId = document.getElementById('customerId').value;
+
+                const typingMsg = {
+                    senderId: parseInt(customerId),
+                    senderName: "Customer " + customerId,
+                    senderType: "CUSTOMER",
+                    messageType: "TYPING"
+                };
+
+                customerClient.send(`/app/typing/${orderId}`, {}, JSON.stringify(typingMsg));
+            }, 500);
+        }
+
+        function handleDriverTyping() {
+            if (!driverClient) return;
+
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                const orderId = document.getElementById('orderId').value;
+                const driverId = document.getElementById('driverId').value;
+
+                const typingMsg = {
+                    senderId: parseInt(driverId),
+                    senderName: "Driver " + driverId,
+                    senderType: "DRIVER",
+                    messageType: "TYPING"
+                };
+
+                driverClient.send(`/app/typing/${orderId}`, {}, JSON.stringify(typingMsg));
+            }, 500);
+        }
+
+        function displayMessage(userType, chatMsg, currentUserId) {
+            console.log('Displaying message:', chatMsg, 'for user:', currentUserId);
+            const messagesDiv = document.getElementById(userType + 'Messages');
+
+            if (!messagesDiv) {
+                console.error('Messages div not found:', userType + 'Messages');
+                return;
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + (chatMsg.senderId == currentUserId ? 'sent' : 'received');
+
+            const timestamp = chatMsg.timestamp || new Date().toISOString();
+            const time = new Date(timestamp).toLocaleTimeString();
+
+            messageDiv.innerHTML = `
+                <strong>${chatMsg.senderName || 'Unknown'}</strong><br>
+                ${chatMsg.message}
+                <div class="time">${time}</div>
+            `;
+
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            console.log('Message displayed successfully');
+        }
+
+        function showTyping(userType) {
+            const typingDiv = document.getElementById(userType + 'Typing');
+            typingDiv.style.display = 'block';
+
+            setTimeout(() => {
+                typingDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        function handleCustomerKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendCustomerMessage();
+            }
+        }
+
+        function handleDriverKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendDriverMessage();
+            }
+        }
+
+        function disconnectBoth() {
+            if (customerClient) {
+                customerClient.disconnect();
+                document.getElementById('customerStatus').textContent = 'Disconnected';
+                document.getElementById('customerStatus').className = 'disconnected';
+                document.getElementById('customerSendBtn').disabled = true;
+            }
+            if (driverClient) {
+                driverClient.disconnect();
+                document.getElementById('driverStatus').textContent = 'Disconnected';
+                document.getElementById('driverStatus').className = 'disconnected';
+                document.getElementById('driverSendBtn').disabled = true;
+            }
+        }
+    </script>
+</body>
+
+</html>

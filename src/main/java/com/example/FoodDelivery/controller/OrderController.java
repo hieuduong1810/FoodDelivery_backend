@@ -258,6 +258,13 @@ public class OrderController {
         return ResponseEntity.ok(order);
     }
 
+    @PatchMapping("/orders/{id}/driver/arrived")
+    @ApiMessage("Driver marks order as arrived")
+    public ResponseEntity<ResOrderDTO> markOrderAsArrived(@PathVariable("id") Long orderId) throws IdInvalidException {
+        ResOrderDTO order = orderService.markOrderAsArrived(orderId);
+        return ResponseEntity.ok(order);
+    }
+
     @PatchMapping("/orders/{id}/driver/delivered")
     @ApiMessage("Driver marks order as delivered")
     public ResponseEntity<ResOrderDTO> markOrderAsDelivered(@PathVariable("id") Long orderId)

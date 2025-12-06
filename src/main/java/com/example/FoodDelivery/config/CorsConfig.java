@@ -14,13 +14,9 @@ public class CorsConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(
-                Arrays.asList("http://localhost:3000", "http://localhost:4173", "http://localhost:5173",
-                        "https://eatzy-frontend-restaurant.vercel.app", "https://eatzy-frontend-customer.vercel.app",
-                        "https://eatzy-frontend-driver.vercel.app", "https://eatzy_be.hoanduong.net/")); // Allowed
-                                                                                                         // origins
+        configuration.setAllowedOriginPatterns(Arrays.asList("*")); // Allow all origins for WebSocket
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS")); // Allowed methods
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept", "x-no-retry"));
+        configuration.setAllowedHeaders(Arrays.asList("*")); // Allow all headers
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
         // How long the response from a pre-flight request can be cached by clients

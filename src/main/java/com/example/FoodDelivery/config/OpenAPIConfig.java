@@ -49,7 +49,7 @@ public class OpenAPIConfig {
                 .info(createApiInfo())
                 .servers(List.of(
                         createServer("http://localhost:8080", "Server URL in Development environment"),
-                        createServer("http://113.177.135.214:38284", "Server URL in Production environment")))
+                        createServer("https://eatzy-backend.hoanduong.net", "Server URL in Production environment")))
                 .addSecurityItem(new SecurityRequirement().addList("Bearer Authentication"))
                 .components(new Components().addSecuritySchemes("Bearer Authentication", createAPIKeyScheme()));
     }
