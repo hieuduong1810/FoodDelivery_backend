@@ -53,6 +53,87 @@ public class VNPayService {
     }
 
     /**
+     * Create VNPAY payment URL for wallet top-up
+     * 
+     * @param userId    User ID to top up wallet for
+     * @param amount    Amount to top up (in VND)
+     * @param ipAddress Client IP address
+     * @param baseUrl   Base URL for callback
+     * @return Payment URL
+     */
+    public String createWalletTopUpUrl(Long userId, BigDecimal amount, String ipAddress, String baseUrl)
+            throws UnsupportedEncodingException {
+        Map<String, String> vnp_Params = new HashMap<>();
+        vnp_Params.put("vnp_Version", "2.1.0");
+        vnp_Params.put("vnp_Command", "pay");
+        vnp_Params.put("vnp_TmnCode", vnp_TmnCode);
+
+        // Amount in VND * 100 (VNPay requires smallest unit)
+        long amountInSmallestUnit = amount.multiply(new BigDecimal("100")).longValue();
+        vnp_Params.put("vnp_Amount", String.valueOf(amountInSmallestUnit));
+
+        vnp_Params.put("vnp_CurrCode", "VND");
+
+        // Use timestamp + userId as unique transaction reference
+        String txnRef = "TOPUP_" + userId + "_" + System.currentTimeMillis();
+        vnp_Params.put("vnp_TxnRef", txnRef);
+        vnp_Params.put("vnp_OrderInfo", "Nap tien vao vi - User ID: " + userId);
+        vnp_Params.put("vnp_OrderType", "other");
+        vnp_Params.put("vnp_Locale", "vn");
+
+        // Generate dynamic callback URL for wallet top-up
+        String callbackUrl = baseUrl + "/api/v1/payment/vnpay/wallet-callback";
+        vnp_Params.put("vnp_ReturnUrl", callbackUrl);
+
+        vnp_Params.put("vnp_IpAddr", ipAddress);
+
+        Calendar cld = Calendar.getInstance(TimeZone.getTimeZone("Etc/GMT+7"));
+        SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
+        String vnp_CreateDate = formatter.format(cld.getTime());
+        vnp_Params.put("vnp_CreateDate", vnp_CreateDate);
+
+        cld.add(Calendar.MINUTE, 15); // Payment expires in 15 minutes
+        String vnp_ExpireDate = formatter.format(cld.getTime());
+        vnp_Params.put("vnp_ExpireDate", vnp_ExpireDate);
+
+        // Build query string
+        List<String> fieldNames = new ArrayList<>(vnp_Params.keySet());
+        Collections.sort(fieldNames);
+        StringBuilder hashData = new StringBuilder();
+        StringBuilder query = new StringBuilder();
+
+        Iterator<String> itr = fieldNames.iterator();
+        while (itr.hasNext()) {
+            String fieldName = itr.next();
+            String fieldValue = vnp_Params.get(fieldName);
+            if ((fieldValue != null) && (fieldValue.length() > 0)) {
+                // Build hash data
+                hashData.append(fieldName);
+                hashData.append('=');
+                hashData.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII.toString()));
+
+                // Build query
+                query.append(URLEncoder.encode(fieldName, StandardCharsets.US_ASCII.toString()));
+                query.append('=');
+                query.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII.toString()));
+
+                if (itr.hasNext()) {
+                    query.append('&');
+                    hashData.append('&');
+                }
+            }
+        }
+
+        String queryUrl = query.toString();
+        String vnp_SecureHash = hmacSHA512(vnp_HashSecret, hashData.toString());
+        queryUrl += "&vnp_SecureHash=" + vnp_SecureHash;
+        String paymentUrl = vnp_Url + "?" + queryUrl;
+
+        log.info("Created wallet top-up payment URL for user {} with amount {}", userId, amount);
+        return paymentUrl;
+    }
+
+    /**
      * Create VNPAY payment URL
      * 
      * @param order     Order to create payment for
@@ -212,14 +293,12 @@ public class VNPayService {
             if (admin != null) {
                 Wallet adminWallet = walletService.getWalletByUserId(admin.getId());
                 if (adminWallet != null) {
-                    walletService.addBalance(adminWallet.getId(), amount);
-
                     // Create wallet transaction for admin
                     WalletTransaction adminTransaction = WalletTransaction.builder()
                             .wallet(adminWallet)
                             .transactionType("VNPAY_RECEIVED")
                             .amount(amount)
-                            .balanceAfter(adminWallet.getBalance())
+                            .balanceAfter(adminWallet.getBalance().add(amount))
                             .description("VNPAY payment received from order #" + vnp_TxnRef + ", Transaction: "
                                     + vnp_TransactionNo)
                             .relatedOrderId(Long.valueOf(vnp_TxnRef))
@@ -235,6 +314,120 @@ public class VNPayService {
         } else {
             orderRepository.deleteById(Long.valueOf(vnp_TxnRef));
             result.put("message", "Payment failed with code: " + vnp_ResponseCode);
+        }
+
+        return result;
+    }
+
+    /**
+     * Process VNPAY wallet top-up callback
+     * 
+     * @param params Callback parameters from VNPAY
+     * @return Processing result
+     */
+    @Transactional
+    public Map<String, Object> processWalletTopUpCallback(Map<String, String> params) throws IdInvalidException {
+        Map<String, Object> result = new HashMap<>();
+
+        // Log all params for debugging
+        log.info("VNPAY wallet top-up callback params: {}", params);
+
+        // Get response code
+        String vnp_ResponseCode = params.get("vnp_ResponseCode");
+        String vnp_TxnRef = params.get("vnp_TxnRef"); // TOPUP_userId_timestamp
+        String vnp_Amount = params.get("vnp_Amount");
+        String vnp_TransactionNo = params.get("vnp_TransactionNo");
+        String vnp_SecureHash = params.get("vnp_SecureHash");
+
+        // Verify secure hash
+        Map<String, String> paramsForHash = new HashMap<>(params);
+        paramsForHash.remove("vnp_SecureHash");
+        paramsForHash.remove("vnp_SecureHashType");
+
+        List<String> fieldNames = new ArrayList<>(paramsForHash.keySet());
+        Collections.sort(fieldNames);
+        StringBuilder hashData = new StringBuilder();
+        Iterator<String> itr = fieldNames.iterator();
+
+        while (itr.hasNext()) {
+            String fieldName = itr.next();
+            String fieldValue = paramsForHash.get(fieldName);
+            if ((fieldValue != null) && (fieldValue.length() > 0)) {
+                try {
+                    hashData.append(fieldName);
+                    hashData.append('=');
+                    hashData.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII.toString()));
+                    if (itr.hasNext()) {
+                        hashData.append('&');
+                    }
+                } catch (UnsupportedEncodingException e) {
+                    log.error("Error encoding field value: {}", e.getMessage());
+                }
+            }
+        }
+
+        String hashDataStr = hashData.toString();
+        String calculatedHash = hmacSHA512(vnp_HashSecret, hashDataStr);
+
+        log.info("Wallet top-up hash data (encoded): {}", hashDataStr);
+        log.info("Calculated hash: {}", calculatedHash);
+        log.info("Received hash: {}", vnp_SecureHash);
+
+        // Compare case-insensitive
+        if (!calculatedHash.equalsIgnoreCase(vnp_SecureHash)) {
+            log.error("Invalid secure hash verification failed!");
+            result.put("success", false);
+            result.put("message", "Invalid secure hash");
+            return result;
+        }
+
+        log.info("Secure hash verified successfully!");
+
+        // Parse amount (divide by 100 to convert back to VND)
+        BigDecimal amount = new BigDecimal(vnp_Amount).divide(new BigDecimal("100"));
+
+        // Extract user ID from transaction reference (format: TOPUP_userId_timestamp)
+        String[] parts = vnp_TxnRef.split("_");
+        if (parts.length < 2) {
+            throw new IdInvalidException("Invalid transaction reference format: " + vnp_TxnRef);
+        }
+        Long userId = Long.valueOf(parts[1]);
+
+        // Check response code
+        boolean isSuccess = "00".equals(vnp_ResponseCode);
+
+        result.put("success", isSuccess);
+        result.put("responseCode", vnp_ResponseCode);
+        result.put("userId", userId);
+        result.put("amount", amount);
+        result.put("transactionNo", vnp_TransactionNo);
+        result.put("txnRef", vnp_TxnRef);
+
+        if (isSuccess) {
+            // Payment successful - add money to user wallet
+            Wallet userWallet = walletService.getWalletByUserId(userId);
+            if (userWallet == null) {
+                throw new IdInvalidException("Wallet not found for user: " + userId);
+            }
+
+            // Create wallet transaction for user
+            WalletTransaction userTransaction = WalletTransaction.builder()
+                    .wallet(userWallet)
+                    .transactionType("DEPOSIT_VNPAY")
+                    .amount(amount)
+                    .balanceAfter(userWallet.getBalance().add(amount))
+                    .description("Nap tien qua VNPAY - Transaction: " + vnp_TransactionNo)
+                    .status("SUCCESS")
+                    .transactionDate(Instant.now())
+                    .createdAt(Instant.now())
+                    .build();
+            walletTransactionService.createWalletTransaction(userTransaction);
+
+            log.info("Wallet top-up successful for user {} with amount {}", userId, amount);
+            result.put("message", "Nap tien thanh cong");
+        } else {
+            log.warn("Wallet top-up failed for user {} with response code: {}", userId, vnp_ResponseCode);
+            result.put("message", getResponseDescription(vnp_ResponseCode));
         }
 
         return result;

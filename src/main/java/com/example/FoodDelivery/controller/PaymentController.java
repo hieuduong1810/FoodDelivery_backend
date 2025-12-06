@@ -101,6 +101,71 @@ public class PaymentController {
     }
 
     /**
+     * Create VNPAY payment URL for wallet top-up
+     */
+    @PostMapping("/vnpay/wallet/create")
+    @ApiMessage("Create VNPAY wallet top-up URL")
+    public ResponseEntity<Map<String, Object>> createVNPayWalletTopUp(
+            @RequestBody Map<String, Object> body,
+            HttpServletRequest request) throws IdInvalidException, UnsupportedEncodingException {
+
+        if (!body.containsKey("userId") || !body.containsKey("amount")) {
+            throw new IdInvalidException("User ID and amount are required");
+        }
+
+        Long userId = ((Number) body.get("userId")).longValue();
+        BigDecimal amount = new BigDecimal(body.get("amount").toString());
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IdInvalidException("Amount must be greater than 0");
+        }
+
+        // Minimum top-up amount: 10,000 VND
+        if (amount.compareTo(new BigDecimal("10000")) < 0) {
+            throw new IdInvalidException("Amount must be at least 10,000 VND");
+        }
+
+        // Get client IP address
+        String ipAddress = request.getHeader("X-FORWARDED-FOR");
+        if (ipAddress == null) {
+            ipAddress = request.getHeader("X-Real-IP");
+        }
+        if (ipAddress == null) {
+            ipAddress = request.getRemoteAddr();
+        }
+
+        // Get base URL from request
+        String scheme = request.getScheme();
+        String serverName = request.getServerName();
+        int serverPort = request.getServerPort();
+        String baseUrl = scheme + "://" + serverName;
+        if ((scheme.equals("http") && serverPort != 80) || (scheme.equals("https") && serverPort != 443)) {
+            baseUrl += ":" + serverPort;
+        }
+
+        String paymentUrl = vnPayService.createWalletTopUpUrl(userId, amount, ipAddress, baseUrl);
+
+        Map<String, Object> result = Map.of(
+                "success", true,
+                "paymentUrl", paymentUrl,
+                "userId", userId,
+                "amount", amount);
+
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * VNPAY wallet top-up callback handler
+     */
+    @GetMapping("/vnpay/wallet-callback")
+    @ApiMessage("VNPAY wallet top-up callback")
+    public ResponseEntity<Map<String, Object>> vnpayWalletCallback(@RequestParam Map<String, String> params)
+            throws IdInvalidException {
+        Map<String, Object> result = vnPayService.processWalletTopUpCallback(params);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
      * VNPAY callback handler
      */
     @GetMapping("/vnpay/callback")

@@ -74,17 +74,15 @@ public class PaymentService {
             return result;
         }
 
-        // Deduct from customer wallet
-        walletService.subtractBalance(customerWallet.getId(), totalAmount);
-
         // Create wallet transaction for customer
         WalletTransaction customerTransaction = WalletTransaction.builder()
                 .wallet(customerWallet)
                 .transactionType("PAYMENT")
                 .amount(totalAmount.negate()) // negative for deduction
-                .balanceAfter(customerWallet.getBalance())
+                .balanceAfter(customerWallet.getBalance().add(totalAmount.negate()))
                 .description("Payment for order #" + order.getId())
                 .relatedOrderId(order.getId())
+                .status("SUCCESS")
                 .transactionDate(Instant.now())
                 .build();
         walletTransactionService.createWalletTransaction(customerTransaction);
@@ -94,16 +92,15 @@ public class PaymentService {
         if (admin != null) {
             Wallet adminWallet = walletService.getWalletByUserId(admin.getId());
             if (adminWallet != null) {
-                walletService.addBalance(adminWallet.getId(), totalAmount);
-
                 // Create wallet transaction for admin
                 WalletTransaction adminTransaction = WalletTransaction.builder()
                         .wallet(adminWallet)
                         .transactionType("PAYMENT_RECEIVED")
                         .amount(totalAmount)
-                        .balanceAfter(adminWallet.getBalance())
+                        .balanceAfter(adminWallet.getBalance().add(totalAmount))
                         .description("Payment received from order #" + order.getId())
                         .relatedOrderId(order.getId())
+                        .status("SUCCESS")
                         .transactionDate(Instant.now())
                         .build();
                 walletTransactionService.createWalletTransaction(adminTransaction);

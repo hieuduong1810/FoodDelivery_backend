@@ -714,12 +714,12 @@ public class OrderService {
                 order.setDriver(nextDriverProfile.getUser());
                 // Keep status as READY or current status for next driver to accept
                 if ("DRIVER_ASSIGNED".equals(order.getOrderStatus())) {
-                    order.setOrderStatus("READY");
+                    order.setOrderStatus("PREPARING");
                 }
             } else {
                 // No more available drivers, set driver to null
                 order.setDriver(null);
-                order.setOrderStatus("READY");
+                order.setOrderStatus("PREPARING");
             }
         } else {
             Optional<DriverProfile> nextDriverProfileOpt;
@@ -738,12 +738,12 @@ public class OrderService {
                 order.setDriver(nextDriverProfile.getUser());
                 // Keep status as READY or current status for next driver to accept
                 if ("DRIVER_ASSIGNED".equals(order.getOrderStatus())) {
-                    order.setOrderStatus("READY");
+                    order.setOrderStatus("PREPARING");
                 }
             } else {
                 // No more available drivers, set driver to null
                 order.setDriver(null);
-                order.setOrderStatus("READY");
+                order.setOrderStatus("PREPARING");
             }
         }
 
