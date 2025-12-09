@@ -103,15 +103,26 @@ public class DriverProfileService {
             currentProfile.setNationalIdRejectionReason(driverProfile.getNationalIdRejectionReason());
         }
 
-        // update document fields - Driver License
-        if (driverProfile.getDriverLicenseFront() != null) {
-            currentProfile.setDriverLicenseFront(driverProfile.getDriverLicenseFront());
+        // update document fields - Profile Photo
+        if (driverProfile.getProfilePhoto() != null) {
+            currentProfile.setProfilePhoto(driverProfile.getProfilePhoto());
         }
-        if (driverProfile.getDriverLicenseBack() != null) {
-            currentProfile.setDriverLicenseBack(driverProfile.getDriverLicenseBack());
+        if (driverProfile.getProfilePhotoStatus() != null) {
+            currentProfile.setProfilePhotoStatus(driverProfile.getProfilePhotoStatus());
+        }
+        if (driverProfile.getProfilePhotoRejectionReason() != null) {
+            currentProfile.setProfilePhotoRejectionReason(driverProfile.getProfilePhotoRejectionReason());
+        }
+
+        // update document fields - Driver License
+        if (driverProfile.getDriverLicenseImage() != null) {
+            currentProfile.setDriverLicenseImage(driverProfile.getDriverLicenseImage());
         }
         if (driverProfile.getDriverLicenseNumber() != null) {
             currentProfile.setDriverLicenseNumber(driverProfile.getDriverLicenseNumber());
+        }
+        if (driverProfile.getDriverLicenseClass() != null) {
+            currentProfile.setDriverLicenseClass(driverProfile.getDriverLicenseClass());
         }
         if (driverProfile.getDriverLicenseExpiry() != null) {
             currentProfile.setDriverLicenseExpiry(driverProfile.getDriverLicenseExpiry());
@@ -123,15 +134,52 @@ public class DriverProfileService {
             currentProfile.setDriverLicenseRejectionReason(driverProfile.getDriverLicenseRejectionReason());
         }
 
-        // update document fields - Vehicle Registration
-        if (driverProfile.getVehicleRegistrationFront() != null) {
-            currentProfile.setVehicleRegistrationFront(driverProfile.getVehicleRegistrationFront());
+        // update bank account & tax info
+        if (driverProfile.getBankName() != null) {
+            currentProfile.setBankName(driverProfile.getBankName());
         }
-        if (driverProfile.getVehicleRegistrationBack() != null) {
-            currentProfile.setVehicleRegistrationBack(driverProfile.getVehicleRegistrationBack());
+        if (driverProfile.getBankBranch() != null) {
+            currentProfile.setBankBranch(driverProfile.getBankBranch());
+        }
+        if (driverProfile.getBankAccountHolder() != null) {
+            currentProfile.setBankAccountHolder(driverProfile.getBankAccountHolder());
+        }
+        if (driverProfile.getBankAccountNumber() != null) {
+            currentProfile.setBankAccountNumber(driverProfile.getBankAccountNumber());
+        }
+        if (driverProfile.getTaxCode() != null) {
+            currentProfile.setTaxCode(driverProfile.getTaxCode());
+        }
+        if (driverProfile.getBankAccountImage() != null) {
+            currentProfile.setBankAccountImage(driverProfile.getBankAccountImage());
+        }
+        if (driverProfile.getBankAccountStatus() != null) {
+            currentProfile.setBankAccountStatus(driverProfile.getBankAccountStatus());
+        }
+        if (driverProfile.getBankAccountRejectionReason() != null) {
+            currentProfile.setBankAccountRejectionReason(driverProfile.getBankAccountRejectionReason());
+        }
+
+        // update vehicle information
+        if (driverProfile.getVehicleType() != null) {
+            currentProfile.setVehicleType(driverProfile.getVehicleType());
+        }
+        if (driverProfile.getVehicleBrand() != null) {
+            currentProfile.setVehicleBrand(driverProfile.getVehicleBrand());
+        }
+        if (driverProfile.getVehicleModel() != null) {
+            currentProfile.setVehicleModel(driverProfile.getVehicleModel());
         }
         if (driverProfile.getVehicleLicensePlate() != null) {
             currentProfile.setVehicleLicensePlate(driverProfile.getVehicleLicensePlate());
+        }
+        if (driverProfile.getVehicleYear() != null) {
+            currentProfile.setVehicleYear(driverProfile.getVehicleYear());
+        }
+
+        // update document fields - Vehicle Registration
+        if (driverProfile.getVehicleRegistrationImage() != null) {
+            currentProfile.setVehicleRegistrationImage(driverProfile.getVehicleRegistrationImage());
         }
         if (driverProfile.getVehicleRegistrationStatus() != null) {
             currentProfile.setVehicleRegistrationStatus(driverProfile.getVehicleRegistrationStatus());
@@ -154,20 +202,23 @@ public class DriverProfileService {
             currentProfile.setVehicleInsuranceRejectionReason(driverProfile.getVehicleInsuranceRejectionReason());
         }
 
-        // update document fields - Profile Photo
-        if (driverProfile.getProfilePhoto() != null) {
-            currentProfile.setProfilePhoto(driverProfile.getProfilePhoto());
+        // update document fields - Vehicle Photo
+        if (driverProfile.getVehiclePhoto() != null) {
+            currentProfile.setVehiclePhoto(driverProfile.getVehiclePhoto());
         }
-        if (driverProfile.getProfilePhotoStatus() != null) {
-            currentProfile.setProfilePhotoStatus(driverProfile.getProfilePhotoStatus());
+        if (driverProfile.getVehiclePhotoStatus() != null) {
+            currentProfile.setVehiclePhotoStatus(driverProfile.getVehiclePhotoStatus());
         }
-        if (driverProfile.getProfilePhotoRejectionReason() != null) {
-            currentProfile.setProfilePhotoRejectionReason(driverProfile.getProfilePhotoRejectionReason());
+        if (driverProfile.getVehiclePhotoRejectionReason() != null) {
+            currentProfile.setVehiclePhotoRejectionReason(driverProfile.getVehiclePhotoRejectionReason());
         }
 
         // update document fields - Criminal Record
         if (driverProfile.getCriminalRecordImage() != null) {
             currentProfile.setCriminalRecordImage(driverProfile.getCriminalRecordImage());
+        }
+        if (driverProfile.getCriminalRecordNumber() != null) {
+            currentProfile.setCriminalRecordNumber(driverProfile.getCriminalRecordNumber());
         }
         if (driverProfile.getCriminalRecordIssueDate() != null) {
             currentProfile.setCriminalRecordIssueDate(driverProfile.getCriminalRecordIssueDate());
@@ -245,30 +296,62 @@ public class DriverProfileService {
         // Document fields - National ID
         dto.setNationalIdFront(profile.getNationalIdFront());
         dto.setNationalIdBack(profile.getNationalIdBack());
+        dto.setNationalIdNumber(profile.getNationalIdNumber());
         dto.setNationalIdStatus(profile.getNationalIdStatus());
         dto.setNationalIdRejectionReason(profile.getNationalIdRejectionReason());
-
-        // Document fields - Driver License
-        dto.setDriverLicenseFront(profile.getDriverLicenseFront());
-        dto.setDriverLicenseBack(profile.getDriverLicenseBack());
-        dto.setDriverLicenseStatus(profile.getDriverLicenseStatus());
-        dto.setDriverLicenseRejectionReason(profile.getDriverLicenseRejectionReason());
-
-        // Document fields - Vehicle Registration
-        dto.setVehicleRegistrationFront(profile.getVehicleRegistrationFront());
-        dto.setVehicleRegistrationBack(profile.getVehicleRegistrationBack());
-        dto.setVehicleRegistrationStatus(profile.getVehicleRegistrationStatus());
-        dto.setVehicleRegistrationRejectionReason(profile.getVehicleRegistrationRejectionReason());
-
-        // Document fields - Vehicle Insurance
-        dto.setVehicleInsuranceImage(profile.getVehicleInsuranceImage());
-        dto.setVehicleInsuranceStatus(profile.getVehicleInsuranceStatus());
-        dto.setVehicleInsuranceRejectionReason(profile.getVehicleInsuranceRejectionReason());
 
         // Document fields - Profile Photo
         dto.setProfilePhoto(profile.getProfilePhoto());
         dto.setProfilePhotoStatus(profile.getProfilePhotoStatus());
         dto.setProfilePhotoRejectionReason(profile.getProfilePhotoRejectionReason());
+
+        // Document fields - Driver License
+        dto.setDriverLicenseImage(profile.getDriverLicenseImage());
+        dto.setDriverLicenseNumber(profile.getDriverLicenseNumber());
+        dto.setDriverLicenseClass(profile.getDriverLicenseClass());
+        dto.setDriverLicenseExpiry(profile.getDriverLicenseExpiry());
+        dto.setDriverLicenseStatus(profile.getDriverLicenseStatus());
+        dto.setDriverLicenseRejectionReason(profile.getDriverLicenseRejectionReason());
+
+        // Bank Account & Tax Info
+        dto.setBankName(profile.getBankName());
+        dto.setBankBranch(profile.getBankBranch());
+        dto.setBankAccountHolder(profile.getBankAccountHolder());
+        dto.setBankAccountNumber(profile.getBankAccountNumber());
+        dto.setTaxCode(profile.getTaxCode());
+        dto.setBankAccountImage(profile.getBankAccountImage());
+        dto.setBankAccountStatus(profile.getBankAccountStatus());
+        dto.setBankAccountRejectionReason(profile.getBankAccountRejectionReason());
+
+        // Vehicle Information
+        dto.setVehicleType(profile.getVehicleType());
+        dto.setVehicleBrand(profile.getVehicleBrand());
+        dto.setVehicleModel(profile.getVehicleModel());
+        dto.setVehicleLicensePlate(profile.getVehicleLicensePlate());
+        dto.setVehicleYear(profile.getVehicleYear());
+
+        // Document fields - Vehicle Registration
+        dto.setVehicleRegistrationImage(profile.getVehicleRegistrationImage());
+        dto.setVehicleRegistrationStatus(profile.getVehicleRegistrationStatus());
+        dto.setVehicleRegistrationRejectionReason(profile.getVehicleRegistrationRejectionReason());
+
+        // Document fields - Vehicle Insurance
+        dto.setVehicleInsuranceImage(profile.getVehicleInsuranceImage());
+        dto.setVehicleInsuranceExpiry(profile.getVehicleInsuranceExpiry());
+        dto.setVehicleInsuranceStatus(profile.getVehicleInsuranceStatus());
+        dto.setVehicleInsuranceRejectionReason(profile.getVehicleInsuranceRejectionReason());
+
+        // Document fields - Vehicle Photo
+        dto.setVehiclePhoto(profile.getVehiclePhoto());
+        dto.setVehiclePhotoStatus(profile.getVehiclePhotoStatus());
+        dto.setVehiclePhotoRejectionReason(profile.getVehiclePhotoRejectionReason());
+
+        // Document fields - Criminal Record
+        dto.setCriminalRecordImage(profile.getCriminalRecordImage());
+        dto.setCriminalRecordNumber(profile.getCriminalRecordNumber());
+        dto.setCriminalRecordIssueDate(profile.getCriminalRecordIssueDate());
+        dto.setCriminalRecordStatus(profile.getCriminalRecordStatus());
+        dto.setCriminalRecordRejectionReason(profile.getCriminalRecordRejectionReason());
 
         return dto;
     }

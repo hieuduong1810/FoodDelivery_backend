@@ -31,18 +31,37 @@ public class ResDriverProfileDTO {
     @JsonProperty("national_id_back")
     private String nationalIdBack;
 
+    @JsonProperty("national_id_number")
+    private String nationalIdNumber;
+
     @JsonProperty("national_id_status")
     private StatusEnum nationalIdStatus;
 
     @JsonProperty("national_id_rejection_reason")
     private String nationalIdRejectionReason;
 
-    // Driver License
-    @JsonProperty("driver_license_front")
-    private String driverLicenseFront;
+    // Profile Photo
+    @JsonProperty("profile_photo")
+    private String profilePhoto;
 
-    @JsonProperty("driver_license_back")
-    private String driverLicenseBack;
+    @JsonProperty("profile_photo_status")
+    private StatusEnum profilePhotoStatus;
+
+    @JsonProperty("profile_photo_rejection_reason")
+    private String profilePhotoRejectionReason;
+
+    // Driver License
+    @JsonProperty("driver_license_image")
+    private String driverLicenseImage;
+
+    @JsonProperty("driver_license_number")
+    private String driverLicenseNumber;
+
+    @JsonProperty("driver_license_class")
+    private String driverLicenseClass;
+
+    @JsonProperty("driver_license_expiry")
+    private java.time.LocalDate driverLicenseExpiry;
 
     @JsonProperty("driver_license_status")
     private StatusEnum driverLicenseStatus;
@@ -50,12 +69,50 @@ public class ResDriverProfileDTO {
     @JsonProperty("driver_license_rejection_reason")
     private String driverLicenseRejectionReason;
 
-    // Vehicle Registration
-    @JsonProperty("vehicle_registration_front")
-    private String vehicleRegistrationFront;
+    // Bank Account & Tax Info
+    @JsonProperty("bank_name")
+    private String bankName;
 
-    @JsonProperty("vehicle_registration_back")
-    private String vehicleRegistrationBack;
+    @JsonProperty("bank_branch")
+    private String bankBranch;
+
+    @JsonProperty("bank_account_holder")
+    private String bankAccountHolder;
+
+    @JsonProperty("bank_account_number")
+    private String bankAccountNumber;
+
+    @JsonProperty("tax_code")
+    private String taxCode;
+
+    @JsonProperty("bank_account_image")
+    private String bankAccountImage;
+
+    @JsonProperty("bank_account_status")
+    private StatusEnum bankAccountStatus;
+
+    @JsonProperty("bank_account_rejection_reason")
+    private String bankAccountRejectionReason;
+
+    // Vehicle Information
+    @JsonProperty("vehicle_type")
+    private String vehicleType;
+
+    @JsonProperty("vehicle_brand")
+    private String vehicleBrand;
+
+    @JsonProperty("vehicle_model")
+    private String vehicleModel;
+
+    @JsonProperty("vehicle_license_plate")
+    private String vehicleLicensePlate;
+
+    @JsonProperty("vehicle_year")
+    private Integer vehicleYear;
+
+    // Vehicle Registration
+    @JsonProperty("vehicle_registration_image")
+    private String vehicleRegistrationImage;
 
     @JsonProperty("vehicle_registration_status")
     private StatusEnum vehicleRegistrationStatus;
@@ -67,21 +124,40 @@ public class ResDriverProfileDTO {
     @JsonProperty("vehicle_insurance_image")
     private String vehicleInsuranceImage;
 
+    @JsonProperty("vehicle_insurance_expiry")
+    private java.time.LocalDate vehicleInsuranceExpiry;
+
     @JsonProperty("vehicle_insurance_status")
     private StatusEnum vehicleInsuranceStatus;
 
     @JsonProperty("vehicle_insurance_rejection_reason")
     private String vehicleInsuranceRejectionReason;
 
-    // Profile Photo
-    @JsonProperty("profile_photo")
-    private String profilePhoto;
+    // Vehicle Photo
+    @JsonProperty("vehicle_photo")
+    private String vehiclePhoto;
 
-    @JsonProperty("profile_photo_status")
-    private StatusEnum profilePhotoStatus;
+    @JsonProperty("vehicle_photo_status")
+    private StatusEnum vehiclePhotoStatus;
 
-    @JsonProperty("profile_photo_rejection_reason")
-    private String profilePhotoRejectionReason;
+    @JsonProperty("vehicle_photo_rejection_reason")
+    private String vehiclePhotoRejectionReason;
+
+    // Criminal Record
+    @JsonProperty("criminal_record_image")
+    private String criminalRecordImage;
+
+    @JsonProperty("criminal_record_number")
+    private String criminalRecordNumber;
+
+    @JsonProperty("criminal_record_issue_date")
+    private java.time.LocalDate criminalRecordIssueDate;
+
+    @JsonProperty("criminal_record_status")
+    private StatusEnum criminalRecordStatus;
+
+    @JsonProperty("criminal_record_rejection_reason")
+    private String criminalRecordRejectionReason;
 
     @Getter
     @Setter
