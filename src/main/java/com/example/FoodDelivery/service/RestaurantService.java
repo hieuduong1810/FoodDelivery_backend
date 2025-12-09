@@ -16,9 +16,9 @@ import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
 import com.example.FoodDelivery.domain.res.restaurant.ResRestaurantDTO;
 import com.example.FoodDelivery.repository.RestaurantRepository;
 import com.example.FoodDelivery.repository.RestaurantTypeRepository;
+import com.example.FoodDelivery.util.SlugUtils;
 import com.example.FoodDelivery.util.error.IdInvalidException;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -42,6 +42,7 @@ public class RestaurantService {
         ResRestaurantDTO dto = new ResRestaurantDTO();
         dto.setId(restaurant.getId());
         dto.setName(restaurant.getName());
+        dto.setSlug(restaurant.getSlug());
         dto.setAddress(restaurant.getAddress());
         dto.setLatitude(restaurant.getLatitude());
         dto.setLongitude(restaurant.getLongitude());
@@ -86,6 +87,19 @@ public class RestaurantService {
         return convertToResRestaurantDTO(restaurant);
     }
 
+    public Restaurant getRestaurantBySlug(String slug) {
+        Optional<Restaurant> restaurantOpt = this.restaurantRepository.findBySlug(slug);
+        return restaurantOpt.orElse(null);
+    }
+
+    public ResRestaurantDTO getRestaurantDTOBySlug(String slug) {
+        Restaurant restaurant = getRestaurantBySlug(slug);
+        if (restaurant == null) {
+            return null;
+        }
+        return convertToResRestaurantDTO(restaurant);
+    }
+
     public Restaurant createRestaurant(Restaurant restaurant) throws IdInvalidException {
         // check owner exists
         if (restaurant.getOwner() != null) {
@@ -103,6 +117,21 @@ public class RestaurantService {
                     .collect(Collectors.toList());
             List<RestaurantType> restaurantTypes = this.restaurantTypeRepository.findByIdIn(reqRestaurant);
             restaurant.setRestaurantTypes(restaurantTypes);
+        }
+
+        // Generate slug from restaurant name
+        if (restaurant.getSlug() == null || restaurant.getSlug().isEmpty()) {
+            String baseSlug = SlugUtils.generateSlug(restaurant.getName());
+            String uniqueSlug = baseSlug;
+            int counter = 2;
+
+            // Ensure slug is unique
+            while (restaurantRepository.existsBySlug(uniqueSlug)) {
+                uniqueSlug = SlugUtils.makeUniqueSlug(baseSlug, counter);
+                counter++;
+            }
+
+            restaurant.setSlug(uniqueSlug);
         }
 
         return restaurantRepository.save(restaurant);
@@ -123,6 +152,20 @@ public class RestaurantService {
         // update fields
         if (restaurant.getName() != null) {
             currentRestaurant.setName(restaurant.getName());
+
+            // Regenerate slug when name changes
+            String baseSlug = SlugUtils.generateSlug(restaurant.getName());
+            String uniqueSlug = baseSlug;
+            int counter = 2;
+
+            // Ensure slug is unique (excluding current restaurant)
+            while (restaurantRepository.existsBySlug(uniqueSlug) &&
+                    !uniqueSlug.equals(currentRestaurant.getSlug())) {
+                uniqueSlug = SlugUtils.makeUniqueSlug(baseSlug, counter);
+                counter++;
+            }
+
+            currentRestaurant.setSlug(uniqueSlug);
         }
         if (restaurant.getAddress() != null) {
             currentRestaurant.setAddress(restaurant.getAddress());

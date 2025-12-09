@@ -29,6 +29,7 @@ public class ResRestaurantDTO {
     private Long id;
     private User owner;
     private String name;
+    private String slug;
     private String address;
     private BigDecimal latitude;
     private BigDecimal longitude;

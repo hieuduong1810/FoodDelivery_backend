@@ -70,6 +70,17 @@ public class RestaurantController {
         return ResponseEntity.ok(restaurant);
     }
 
+    @GetMapping("/restaurants/slug/{slug}")
+    @ApiMessage("Get restaurant by slug")
+    public ResponseEntity<ResRestaurantDTO> getRestaurantBySlug(@PathVariable("slug") String slug)
+            throws IdInvalidException {
+        ResRestaurantDTO restaurant = restaurantService.getRestaurantDTOBySlug(slug);
+        if (restaurant == null) {
+            throw new IdInvalidException("Restaurant not found with slug: " + slug);
+        }
+        return ResponseEntity.ok(restaurant);
+    }
+
     @DeleteMapping("/restaurants/{id}")
     @ApiMessage("Delete restaurant by id")
     public ResponseEntity<Void> deleteRestaurant(@PathVariable("id") Long id) throws IdInvalidException {

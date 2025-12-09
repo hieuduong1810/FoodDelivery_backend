@@ -27,6 +27,9 @@ public class Restaurant {
 
     private String name;
 
+    @Column(unique = true, length = 255)
+    private String slug;
+
     @Column(columnDefinition = "TEXT")
     private String address;
 
@@ -47,23 +50,23 @@ public class Restaurant {
 
     private String schedule; // e.g., "09:00-21:00"
 
-    @OneToMany(mappedBy = "restaurant")
+    @OneToMany(mappedBy = "restaurant", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<DishCategory> dishCategories;
 
-    @OneToMany(mappedBy = "restaurant")
+    @OneToMany(mappedBy = "restaurant", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Dish> dishes;
 
-    @OneToMany(mappedBy = "restaurant")
+    @OneToMany(mappedBy = "restaurant", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Order> orders;
 
-    @OneToMany(mappedBy = "restaurant")
+    @OneToMany(mappedBy = "restaurant", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<Voucher> vouchers;
 
-    @OneToMany(mappedBy = "restaurant")
+    @OneToMany(mappedBy = "restaurant", fetch = FetchType.LAZY)
     @JsonIgnore
     private List<MonthlyRevenueReport> monthlyRevenueReports;
 

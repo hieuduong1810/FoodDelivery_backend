@@ -5,6 +5,8 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 @Entity
 @Table(name = "menu_options")
 @Getter
@@ -19,6 +21,7 @@ public class MenuOption {
 
     @ManyToOne
     @JoinColumn(name = "group_id")
+    @JsonIgnore
     private MenuOptionGroup menuOptionGroup;
 
     private String name;
@@ -29,6 +32,7 @@ public class MenuOption {
     @Column(name = "is_available")
     private Boolean isAvailable;
 
-    @OneToMany(mappedBy = "menuOption")
+    @OneToMany(mappedBy = "menuOption", fetch = FetchType.LAZY)
+    @JsonIgnore
     private List<OrderItemOption> orderItemOptions;
 }
