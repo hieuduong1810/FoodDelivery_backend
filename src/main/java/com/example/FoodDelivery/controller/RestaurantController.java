@@ -91,4 +91,18 @@ public class RestaurantController {
         restaurantService.deleteRestaurant(id);
         return ResponseEntity.ok().body(null);
     }
+
+    @PostMapping("/restaurants/{id}/open")
+    @ApiMessage("Owner opens restaurant")
+    public ResponseEntity<ResRestaurantDTO> openRestaurant(@PathVariable("id") Long id) throws IdInvalidException {
+        ResRestaurantDTO restaurant = restaurantService.openRestaurant(id);
+        return ResponseEntity.ok(restaurant);
+    }
+
+    @PostMapping("/restaurants/{id}/close")
+    @ApiMessage("Owner closes restaurant")
+    public ResponseEntity<ResRestaurantDTO> closeRestaurant(@PathVariable("id") Long id) throws IdInvalidException {
+        ResRestaurantDTO restaurant = restaurantService.closeRestaurant(id);
+        return ResponseEntity.ok(restaurant);
+    }
 }

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Location Tracking Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .btn-danger {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .btn-warning {
+            background-color: #ff9800;
+            color: white;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .log {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .log-entry {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .log-entry.sent {
+            color: #0066cc;
+        }
+
+        .log-entry.received {
+            color: #009900;
+        }
+
+        .log-entry.error {
+            color: #cc0000;
+        }
+
+        .location-display {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        .location-display h4 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🚗 Driver Location Tracking Test</h1>
+
+    <div class="container">
+        <!-- Driver Panel -->
+        <div class="panel">
+            <h2>👨‍✈️ Driver Panel</h2>
+
+            <div class="form-group">
+                <label>Order ID:</label>
+                <input type="number" id="driverOrderId" value="1" />
+            </div>
+
+            <div class="form-group">
+                <label>Current Latitude:</label>
+                <input type="number" id="driverLat" value="10.762622" step="0.000001" />
+            </div>
+
+            <div class="form-group">
+                <label>Current Longitude:</label>
+                <input type="number" id="driverLng" value="106.660172" step="0.000001" />
+            </div>
+
+            <button class="btn-primary" onclick="connectDriver()">Connect Driver</button>
+            <button class="btn-danger" onclick="disconnectDriver()">Disconnect</button>
+            <button class="btn-warning" onclick="sendLocation()">Send Location Once</button>
+            <button class="btn-primary" id="autoSendBtn" onclick="toggleAutoSend()">Start Auto Send (5s)</button>
+
+            <div id="driverStatus" class="status disconnected">
+                Status: Disconnected
+            </div>
+
+            <h3>Driver Log:</h3>
+            <div id="driverLog" class="log"></div>
+        </div>
+
+        <!-- Customer Panel -->
+        <div class="panel">
+            <h2>👤 Customer Panel</h2>
+
+            <div class="form-group">
+                <label>Customer ID:</label>
+                <input type="number" id="customerId" value="1" />
+            </div>
+
+            <button class="btn-primary" onclick="connectCustomer()">Connect Customer</button>
+            <button class="btn-danger" onclick="disconnectCustomer()">Disconnect</button>
+
+            <div id="customerStatus" class="status disconnected">
+                Status: Disconnected
+            </div>
+
+            <div class="location-display">
+                <h4>📍 Driver Location</h4>
+                <div><strong>Latitude:</strong> <span id="displayLat">-</span></div>
+                <div><strong>Longitude:</strong> <span id="displayLng">-</span></div>
+                <div><strong>Last Update:</strong> <span id="displayTime">-</span></div>
+            </div>
+
+            <h3>Customer Log:</h3>
+            <div id="customerLog" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        const WS_URL = 'http://localhost:8080/ws';
+
+        let driverStompClient = null;
+        let customerStompClient = null;
+        let autoSendInterval = null;
+
+        // Driver Functions
+        function connectDriver() {
+            const orderId = document.getElementById('driverOrderId').value;
+
+            const socket = new SockJS(WS_URL);
+            driverStompClient = Stomp.over(socket);
+
+            driverStompClient.connect({}, function (frame) {
+                updateDriverStatus('Connected', true);
+                logDriver('✅ Driver connected to WebSocket', 'sent');
+            }, function (error) {
+                updateDriverStatus('Connection Error: ' + error, false);
+                logDriver('❌ Connection error: ' + error, 'error');
+            });
+        }
+
+        function disconnectDriver() {
+            if (driverStompClient !== null) {
+                driverStompClient.disconnect();
+                driverStompClient = null;
+            }
+            stopAutoSend();
+            updateDriverStatus('Disconnected', false);
+            logDriver('🔌 Driver disconnected', 'sent');
+        }
+
+        function sendLocation() {
+            if (driverStompClient === null || !driverStompClient.connected) {
+                logDriver('❌ Not connected! Please connect first.', 'error');
+                return;
+            }
+
+            const orderId = document.getElementById('driverOrderId').value;
+            const latitude = parseFloat(document.getElementById('driverLat').value);
+            const longitude = parseFloat(document.getElementById('driverLng').value);
+
+            const locationUpdate = {
+                latitude: latitude,
+                longitude: longitude
+            };
+
+            driverStompClient.send(
+                `/app/driver/location/${orderId}`,
+                {},
+                JSON.stringify(locationUpdate)
+            );
+
+            logDriver(`📤 Sent location: ${latitude}, ${longitude}`, 'sent');
+
+            // Simulate movement (add small random change)
+            document.getElementById('driverLat').value = (latitude + (Math.random() - 0.5) * 0.001).toFixed(6);
+            document.getElementById('driverLng').value = (longitude + (Math.random() - 0.5) * 0.001).toFixed(6);
+        }
+
+        function toggleAutoSend() {
+            if (autoSendInterval === null) {
+                startAutoSend();
+            } else {
+                stopAutoSend();
+            }
+        }
+
+        function startAutoSend() {
+            autoSendInterval = setInterval(() => {
+                sendLocation();
+            }, 5000);
+            document.getElementById('autoSendBtn').textContent = 'Stop Auto Send';
+            document.getElementById('autoSendBtn').classList.remove('btn-primary');
+            document.getElementById('autoSendBtn').classList.add('btn-danger');
+            logDriver('🔄 Auto-send started (every 5 seconds)', 'sent');
+        }
+
+        function stopAutoSend() {
+            if (autoSendInterval !== null) {
+                clearInterval(autoSendInterval);
+                autoSendInterval = null;
+                document.getElementById('autoSendBtn').textContent = 'Start Auto Send (5s)';
+                document.getElementById('autoSendBtn').classList.remove('btn-danger');
+                document.getElementById('autoSendBtn').classList.add('btn-primary');
+                logDriver('⏹️ Auto-send stopped', 'sent');
+            }
+        }
+
+        function updateDriverStatus(message, connected) {
+            const statusDiv = document.getElementById('driverStatus');
+            statusDiv.textContent = 'Status: ' + message;
+            statusDiv.className = 'status ' + (connected ? 'connected' : 'disconnected');
+        }
+
+        function logDriver(message, type = 'sent') {
+            const logDiv = document.getElementById('driverLog');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Customer Functions
+        function connectCustomer() {
+            const customerId = document.getElementById('customerId').value;
+
+            const socket = new SockJS(WS_URL);
+            customerStompClient = Stomp.over(socket);
+
+            customerStompClient.connect({}, function (frame) {
+                updateCustomerStatus('Connected', true);
+                logCustomer('✅ Customer connected to WebSocket', 'received');
+
+                // Subscribe to driver location updates
+                customerStompClient.subscribe(`/topic/customer/${customerId}/driver-location`, function (message) {
+                    const location = JSON.parse(message.body);
+                    logCustomer(`📍 Received location: ${location.latitude}, ${location.longitude}`, 'received');
+
+                    // Update display
+                    document.getElementById('displayLat').textContent = location.latitude;
+                    document.getElementById('displayLng').textContent = location.longitude;
+                    document.getElementById('displayTime').textContent = new Date(location.timestamp).toLocaleString();
+                });
+
+                logCustomer(`🔔 Subscribed to /topic/customer/${customerId}/driver-location`, 'received');
+            }, function (error) {
+                updateCustomerStatus('Connection Error: ' + error, false);
+                logCustomer('❌ Connection error: ' + error, 'error');
+            });
+        }
+
+        function disconnectCustomer() {
+            if (customerStompClient !== null) {
+                customerStompClient.disconnect();
+                customerStompClient = null;
+            }
+            updateCustomerStatus('Disconnected', false);
+            logCustomer('🔌 Customer disconnected', 'received');
+        }
+
+        function updateCustomerStatus(message, connected) {
+            const statusDiv = document.getElementById('customerStatus');
+            statusDiv.textContent = 'Status: ' + message;
+            statusDiv.className = 'status ' + (connected ? 'connected' : 'disconnected');
+        }
+
+        function logCustomer(message, type = 'received') {
+            const logDiv = document.getElementById('customerLog');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+    </script>
+</body>
+
+</html>

@@ -69,6 +69,16 @@
   - 📡 **Order Status Notifications** - Thông báo real-time cho Customer, Restaurant, Driver khi đơn hàng thay đổi trạng thái
   - 💬 **Chat System** - Chat trực tiếp giữa Driver và Customer cho mỗi đơn hàng
   - 🔔 **Typing Indicators** - Hiển thị khi người dùng đang nhập tin nhắn
+  - 📍 **Driver Location Tracking** - Theo dõi vị trí tài xế real-time thông qua WebSocket
+    - Driver gửi location mỗi 5 giây qua `/app/driver/location/{orderId}`
+    - Customer nhận location qua subscription `/topic/customer/{customerId}/driver-location`
+    - Tự động cập nhật vị trí vào database (driver_profiles table)
+- **Smart Driver Assignment** - Hệ thống tìm tài xế thông minh
+  - 🎯 **Radius-based Search** - Chỉ tìm tài xế trong phạm vi bán kính cấu hình được (DRIVER_SEARCH_RADIUS_KM)
+  - 🗺️ **Mapbox Integration** - Sử dụng Mapbox Directions API để tính khoảng cách đường đi thực tế
+  - 🚗 **Real Driving Distance** - Ưu tiên tài xế có quãng đường lái xe ngắn nhất (không phải đường chim bay)
+  - 🔄 **Haversine Pre-filter** - Lọc nhanh bằng Haversine formula trước khi gọi Mapbox API
+  - ⚡ **Fallback Mechanism** - Tự động fallback nếu Mapbox API fails
 - **Dynamic Client IP Extraction** - Tự động lấy IP từ request (X-Forwarded-For, X-Real-IP)
 - **Scheduled Jobs** - Auto cleanup expired VNPay orders (15 minutes)
 - **Circular Dependency Resolution** - @Lazy injection pattern
@@ -99,6 +109,7 @@
 - **VNPay Payment Gateway** - Vietnamese payment platform
 - **Cloudinary** - Cloud-based image storage
 - **Gmail SMTP** - Email delivery service
+- **Mapbox Directions API** - Real-time routing và distance calculation
 
 ### Security & Authentication
 - **JWT (jjwt 0.12.3)** - JSON Web Token authentication
@@ -165,6 +176,9 @@ VNPAY_TMN_CODE=your_tmn_code
 VNPAY_HASH_SECRET=your_hash_secret
 VNPAY_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
 VNPAY_RETURN_URL=http://localhost:8080/api/v1/payment/vnpay/callback
+
+# Mapbox
+MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoiZHVvbmdoaWV1MTgxMCIsImEiOiJjbWoyZ2NsdjIwZ24yM2VvanAyYWttNzhqIn0.SIACCMIF1zU4tLwz68MXTA
 ```
 
 ### 3️⃣ Run with Docker (Recommended)
@@ -619,6 +633,118 @@ curl http://localhost:8080/ws/info
 # - Check order ID is correct
 # - Restart both server and client
 ```
+
+**7. Driver Location Tracking Not Working**
+```bash
+# WebSocket paths must match:
+# Driver sends to: /app/driver/location/{orderId}
+# Customer subscribes to: /topic/customer/{customerId}/driver-location
+
+# Common issues:
+# - Order ID mismatch
+# - Customer ID incorrect
+# - Driver not assigned to order
+# - WebSocket connection dropped
+
+# Debug:
+# - Check browser console for WebSocket errors
+# - Verify driver is assigned to order (order.driver != null)
+# - Test with driver-location-test.html file
+# - Check database: driver_profiles.current_latitude/longitude updated
+
+# Mapbox API errors:
+# - Verify token is valid: pk.eyJ1...
+# - Check API rate limits (free tier: 100,000/month)
+# - Ensure coordinates are valid (latitude: -90 to 90, longitude: -180 to 180)
+```
+
+**8. Driver Assignment Fails or Wrong Driver Selected**
+```bash
+# Check system configuration
+SELECT * FROM system_configuration WHERE config_key = 'DRIVER_SEARCH_RADIUS_KM';
+# Default: 10 km
+
+# Verify driver profiles have coordinates
+SELECT id, user_id, status, current_latitude, current_longitude 
+FROM driver_profiles 
+WHERE status IN ('ONLINE', 'AVAILABLE');
+
+# Check Mapbox service logs
+# Should see: "Updated driver {id} location in database"
+# And: "Sent driver location to customer {id}"
+
+# If no driver found:
+# - Increase search radius in system_configuration
+# - Check driver status (must be ONLINE or AVAILABLE)
+# - Verify restaurant has coordinates set
+# - Check wallet balance >= 0
+# - For COD orders: verify driver cod_limit >= order amount
+
+# Mapbox API fallback:
+# If Mapbox API fails, system will skip that driver
+# Check logs: "Failed to get driving distance from Mapbox for driver {id}"
+# Increase candidate count or check Mapbox API status
+```
+
+---
+
+## 🗺️ Mapbox Integration
+
+### Setup
+```java
+// Token already configured in MapboxService.java
+private static final String MAPBOX_TOKEN = "pk.eyJ1IjoiZHVvbmdoaWV1MTgxMCIsImEiOiJjbWoyZ2NsdjIwZ24yM2VvanAyYWttNzhqIn0.SIACCMIF1zU4tLwz68MXTA";
+
+// API Endpoint
+https://api.mapbox.com/directions/v5/mapbox/driving/{lng},{lat};{lng},{lat}
+```
+
+### How It Works
+1. **Pre-filter with Haversine** - Lọc tài xế trong bán kính bằng công thức Haversine (đường chim bay)
+2. **Calculate Real Distance** - Gọi Mapbox API cho từng tài xế để tính khoảng cách đường đi thực tế
+3. **Sort by Distance** - Chọn tài xế có quãng đường lái xe ngắn nhất
+4. **Assign Driver** - Gán tài xế vào đơn hàng
+
+### API Methods
+```java
+// MapboxService.java
+BigDecimal getDrivingDistance(lat1, lng1, lat2, lng2)  // Returns km
+BigDecimal getDrivingDuration(lat1, lng1, lat2, lng2)  // Returns minutes
+```
+
+### Rate Limits
+- Free tier: 100,000 requests/month
+- ~3,300 requests/day
+- Monitor usage in [Mapbox Dashboard](https://account.mapbox.com/)
+
+---
+
+## 📍 Driver Location Tracking
+
+### WebSocket Endpoints
+```javascript
+// Driver sends location updates
+SEND /app/driver/location/{orderId}
+Body: { "latitude": 10.762622, "longitude": 106.660172 }
+
+// Customer receives location updates
+SUBSCRIBE /topic/customer/{customerId}/driver-location
+Receives: { "latitude": 10.762622, "longitude": 106.660172, "timestamp": "2024-..." }
+```
+
+### Testing
+Use provided HTML test file:
+```bash
+# Open in browser (must use http-server, not file://)
+npx http-server
+# Navigate to http://localhost:8080/driver-location-test.html
+```
+
+### Implementation Details
+- Driver sends location every 5 seconds (configurable)
+- Location stored in `driver_profiles` table (`current_latitude`, `current_longitude`)
+- Real-time broadcast to customer via WebSocket
+- Coordinates validated before saving
 
 ---
 

@@ -97,14 +97,31 @@ public class DriverProfileController {
         return ResponseEntity.ok().body(null);
     }
 
-    @GetMapping("/driver-profiles/available-by-cod-limit")
-    @ApiMessage("Get first available driver by COD limit")
-    public ResponseEntity<ResDriverProfileDTO> getFirstAvailableDriverByCodLimit(
-            @RequestParam(name = "orderAmount") BigDecimal orderAmount) throws IdInvalidException {
-        ResDriverProfileDTO driver = driverProfileService.getFirstAvailableDriverByCodLimit(orderAmount);
-        if (driver == null) {
-            throw new IdInvalidException("No available driver found with COD limit >= " + orderAmount);
-        }
-        return ResponseEntity.ok(driver);
+    @PostMapping("/driver-profiles/go-online")
+    @ApiMessage("Driver goes online (opens app)")
+    public ResponseEntity<ResDriverProfileDTO> goOnline() throws IdInvalidException {
+        ResDriverProfileDTO profile = driverProfileService.goOnline();
+        return ResponseEntity.ok(profile);
     }
+
+    @PostMapping("/driver-profiles/go-offline")
+    @ApiMessage("Driver goes offline (closes app)")
+    public ResponseEntity<ResDriverProfileDTO> goOffline() throws IdInvalidException {
+        ResDriverProfileDTO profile = driverProfileService.goOffline();
+        return ResponseEntity.ok(profile);
+    }
+
+    // @GetMapping("/driver-profiles/available-by-cod-limit")
+    // @ApiMessage("Get first available driver by COD limit")
+    // public ResponseEntity<ResDriverProfileDTO> getFirstAvailableDriverByCodLimit(
+    // @RequestParam(name = "orderAmount") BigDecimal orderAmount) throws
+    // IdInvalidException {
+    // ResDriverProfileDTO driver =
+    // driverProfileService.getFirstAvailableDriverByCodLimit(orderAmount);
+    // if (driver == null) {
+    // throw new IdInvalidException("No available driver found with COD limit >= " +
+    // orderAmount);
+    // }
+    // return ResponseEntity.ok(driver);
+    // }
 }

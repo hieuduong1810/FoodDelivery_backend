@@ -19,6 +19,7 @@ import com.example.FoodDelivery.domain.OrderDriverRejection;
 import com.example.FoodDelivery.domain.OrderItem;
 import com.example.FoodDelivery.domain.OrderItemOption;
 import com.example.FoodDelivery.domain.Restaurant;
+import com.example.FoodDelivery.domain.SystemConfiguration;
 import com.example.FoodDelivery.domain.User;
 import com.example.FoodDelivery.domain.req.ReqOrderDTO;
 import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
@@ -56,6 +57,9 @@ public class OrderService {
     private final PaymentService paymentService;
     private final VNPayService vnPayService;
     private final WebSocketService webSocketService;
+    private final SystemConfigurationService systemConfigurationService;
+    private final MapboxService mapboxService;
+    private final DriverProfileService driverProfileService;
 
     public OrderService(OrderRepository orderRepository, UserService userService,
             RestaurantService restaurantService, DishService dishService,
@@ -64,7 +68,10 @@ public class OrderService {
             OrderDriverRejectionRepository orderDriverRejectionRepository,
             PaymentService paymentService,
             VNPayService vnPayService,
-            WebSocketService webSocketService) {
+            WebSocketService webSocketService,
+            SystemConfigurationService systemConfigurationService,
+            MapboxService mapboxService,
+            @Lazy DriverProfileService driverProfileService) {
         this.orderRepository = orderRepository;
         this.userService = userService;
         this.restaurantService = restaurantService;
@@ -76,6 +83,9 @@ public class OrderService {
         this.paymentService = paymentService;
         this.vnPayService = vnPayService;
         this.webSocketService = webSocketService;
+        this.systemConfigurationService = systemConfigurationService;
+        this.mapboxService = mapboxService;
+        this.driverProfileService = driverProfileService;
     }
 
     private ResOrderDTO convertToResOrderDTO(Order order) {
@@ -166,6 +176,46 @@ public class OrderService {
         }
 
         return dto;
+    }
+
+    /**
+     * Helper method to find the closest available driver using Mapbox API for real
+     * driving distance
+     */
+    private DriverProfile findClosestDriverWithMapbox(List<DriverProfile> candidates, Restaurant restaurant) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+
+        // Calculate real driving distance for each candidate using Mapbox API
+        DriverProfile closestDriver = null;
+        BigDecimal shortestDistance = null;
+
+        for (DriverProfile driver : candidates) {
+            if (driver.getCurrentLatitude() == null || driver.getCurrentLongitude() == null) {
+                continue;
+            }
+
+            BigDecimal drivingDistance = mapboxService.getDrivingDistance(
+                    driver.getCurrentLatitude(),
+                    driver.getCurrentLongitude(),
+                    restaurant.getLatitude(),
+                    restaurant.getLongitude());
+
+            // If Mapbox API fails for this driver, skip them
+            if (drivingDistance == null) {
+                log.warn("Failed to get driving distance from Mapbox for driver {}", driver.getUser().getId());
+                continue;
+            }
+
+            // Check if this is the closest driver so far
+            if (shortestDistance == null || drivingDistance.compareTo(shortestDistance) < 0) {
+                shortestDistance = drivingDistance;
+                closestDriver = driver;
+            }
+        }
+
+        return closestDriver;
     }
 
     public Order getOrderById(Long id) {
@@ -467,31 +517,60 @@ public class OrderService {
         if (order == null) {
             throw new IdInvalidException("Order not found with id: " + orderId);
         }
-        if (order.getPaymentMethod() == "COD") {
-            Optional<DriverProfile> driverOpt = driverProfileRepository
-                    .findFirstAvailableDriverByCodLimit(order.getTotalAmount());
-            if (!driverOpt.isPresent()) {
-                throw new IdInvalidException("No available driver found for this order");
-            }
 
-            User driver = this.userService.getUserById(driverOpt.get().getUser().getId());
-            if (driver == null) {
-                throw new IdInvalidException("Driver not found with id: " + driverOpt.get().getUser().getId());
-            }
-            order.setDriver(driver);
-        } else {
-            Optional<DriverProfile> driverOpt = driverProfileRepository
-                    .findFirstAvailableDriver();
-            if (!driverOpt.isPresent()) {
-                throw new IdInvalidException("No available driver found for this order");
-            }
-
-            User driver = this.userService.getUserById(driverOpt.get().getUser().getId());
-            if (driver == null) {
-                throw new IdInvalidException("Driver not found with id: " + driverOpt.get().getUser().getId());
-            }
-            order.setDriver(driver);
+        // Get restaurant location
+        Restaurant restaurant = order.getRestaurant();
+        if (restaurant == null || restaurant.getLatitude() == null || restaurant.getLongitude() == null) {
+            throw new IdInvalidException("Restaurant location is required to find drivers");
         }
+
+        // Get search radius from system configuration (default 10 km if not set)
+        BigDecimal radiusKm = new BigDecimal("10.0");
+        try {
+            SystemConfiguration radiusConfig = systemConfigurationService
+                    .getSystemConfigurationByKey("DRIVER_SEARCH_RADIUS_KM");
+            if (radiusConfig != null && radiusConfig.getConfigValue() != null
+                    && !radiusConfig.getConfigValue().isEmpty()) {
+                radiusKm = new BigDecimal(radiusConfig.getConfigValue());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get DRIVER_SEARCH_RADIUS_KM config, using default 10 km", e);
+        }
+
+        // Find available drivers within radius
+        List<DriverProfile> candidateDrivers;
+        if ("COD".equals(order.getPaymentMethod())) {
+            candidateDrivers = driverProfileRepository
+                    .findAvailableDriversByCodLimitWithinRadius(
+                            order.getTotalAmount(),
+                            restaurant.getLatitude(),
+                            restaurant.getLongitude(),
+                            radiusKm);
+        } else {
+            candidateDrivers = driverProfileRepository
+                    .findAvailableDriversWithinRadius(
+                            restaurant.getLatitude(),
+                            restaurant.getLongitude(),
+                            radiusKm);
+        }
+
+        if (candidateDrivers.isEmpty()) {
+            throw new IdInvalidException("No available driver found within " + radiusKm + " km radius");
+        }
+
+        // Find the closest driver using Mapbox API for real driving distance
+        DriverProfile closestDriver = findClosestDriverWithMapbox(candidateDrivers, restaurant);
+        if (closestDriver == null) {
+            throw new IdInvalidException(
+                    "No available driver found (failed to calculate driving distance for all candidates)");
+        }
+
+        User driver = this.userService.getUserById(closestDriver.getUser().getId());
+        if (driver == null) {
+            throw new IdInvalidException("Driver not found with id: " + closestDriver.getUser().getId());
+        }
+
+        order.setDriver(driver);
         order.setOrderStatus("DRIVER_ASSIGNED");
         order = orderRepository.save(order);
 
@@ -650,6 +729,14 @@ public class OrderService {
         order.setOrderStatus("DRIVER_ASSIGNED");
         order = orderRepository.save(order);
 
+        // Update driver profile status to UNAVAILABLE
+        try {
+            driverProfileService.updateDriverProfileStatusByUserId(driver.getId(), "UNAVAILABLE");
+            log.info("Updated driver {} profile status to UNAVAILABLE", driver.getId());
+        } catch (Exception e) {
+            log.error("Failed to update driver profile status: {}", e.getMessage());
+        }
+
         ResOrderDTO orderDTO = convertToResOrderDTO(order);
 
         // Notify customer and restaurant about driver acceptance
@@ -694,57 +781,79 @@ public class OrderService {
         // Get list of all rejected driver IDs for this order
         List<Long> rejectedDriverIds = orderDriverRejectionRepository.findRejectedDriverIdsByOrderId(orderId);
 
-        // Find next available driver excluding rejected ones
-        if (order.getPaymentMethod() == "COD") {
-            Optional<DriverProfile> nextDriverProfileOpt;
-            if (rejectedDriverIds.isEmpty()) {
-                nextDriverProfileOpt = driverProfileRepository
-                        .findFirstAvailableDriverByCodLimit(order.getTotalAmount());
-            } else {
-                nextDriverProfileOpt = driverProfileRepository.findFirstAvailableDriverByCodLimitExcluding(
-                        order.getTotalAmount(), rejectedDriverIds);
-                if (!nextDriverProfileOpt.isPresent()) {
-                    throw new IdInvalidException("No available driver found for this order");
-                }
-            }
+        // Get restaurant location
+        Restaurant restaurant = order.getRestaurant();
+        if (restaurant == null || restaurant.getLatitude() == null || restaurant.getLongitude() == null) {
+            throw new IdInvalidException("Restaurant location is required to find drivers");
+        }
 
-            if (nextDriverProfileOpt.isPresent()) {
-                // Assign to next driver
-                DriverProfile nextDriverProfile = nextDriverProfileOpt.get();
-                order.setDriver(nextDriverProfile.getUser());
-                // Keep status as READY or current status for next driver to accept
-                if ("DRIVER_ASSIGNED".equals(order.getOrderStatus())) {
-                    order.setOrderStatus("PREPARING");
-                }
+        // Get search radius
+        BigDecimal radiusKm = new BigDecimal("10.0");
+        try {
+            SystemConfiguration radiusConfig = systemConfigurationService
+                    .getSystemConfigurationByKey("DRIVER_SEARCH_RADIUS_KM");
+            if (radiusConfig != null && radiusConfig.getConfigValue() != null
+                    && !radiusConfig.getConfigValue().isEmpty()) {
+                radiusKm = new BigDecimal(radiusConfig.getConfigValue());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get DRIVER_SEARCH_RADIUS_KM config, using default 10 km", e);
+        }
+
+        // Find next available drivers excluding rejected ones
+        List<DriverProfile> candidateDrivers;
+        if ("COD".equals(order.getPaymentMethod())) {
+            if (rejectedDriverIds.isEmpty()) {
+                candidateDrivers = driverProfileRepository
+                        .findAvailableDriversByCodLimitWithinRadius(
+                                order.getTotalAmount(),
+                                restaurant.getLatitude(),
+                                restaurant.getLongitude(),
+                                radiusKm);
             } else {
-                // No more available drivers, set driver to null
-                order.setDriver(null);
-                order.setOrderStatus("PREPARING");
+                candidateDrivers = driverProfileRepository.findAvailableDriversByCodLimitExcludingWithinRadius(
+                        order.getTotalAmount(),
+                        restaurant.getLatitude(),
+                        restaurant.getLongitude(),
+                        radiusKm,
+                        rejectedDriverIds);
             }
         } else {
-            Optional<DriverProfile> nextDriverProfileOpt;
             if (rejectedDriverIds.isEmpty()) {
-                nextDriverProfileOpt = driverProfileRepository.findFirstAvailableDriver();
+                candidateDrivers = driverProfileRepository.findAvailableDriversWithinRadius(
+                        restaurant.getLatitude(),
+                        restaurant.getLongitude(),
+                        radiusKm);
             } else {
-                nextDriverProfileOpt = driverProfileRepository.findFirstAvailableDriverExcluding(rejectedDriverIds);
-                if (!nextDriverProfileOpt.isPresent()) {
-                    throw new IdInvalidException("No available driver found for this order");
-                }
+                candidateDrivers = driverProfileRepository.findAvailableDriversExcludingWithinRadius(
+                        restaurant.getLatitude(),
+                        restaurant.getLongitude(),
+                        radiusKm,
+                        rejectedDriverIds);
             }
+        }
 
-            if (nextDriverProfileOpt.isPresent()) {
+        // If we found candidates, assign the closest one using Mapbox
+        if (!candidateDrivers.isEmpty()) {
+            DriverProfile closestDriver = findClosestDriverWithMapbox(candidateDrivers, restaurant);
+            if (closestDriver != null) {
                 // Assign to next driver
-                DriverProfile nextDriverProfile = nextDriverProfileOpt.get();
-                order.setDriver(nextDriverProfile.getUser());
+                order.setDriver(closestDriver.getUser());
                 // Keep status as READY or current status for next driver to accept
                 if ("DRIVER_ASSIGNED".equals(order.getOrderStatus())) {
                     order.setOrderStatus("PREPARING");
                 }
             } else {
-                // No more available drivers, set driver to null
+                // Failed to calculate distance for all candidates
                 order.setDriver(null);
                 order.setOrderStatus("PREPARING");
+                log.warn("Failed to find closest driver for order {} - Mapbox distance calculation failed",
+                        orderId);
             }
+        } else {
+            // No more available drivers, set driver to null
+            order.setDriver(null);
+            order.setOrderStatus("PREPARING");
         }
 
         order = orderRepository.save(order);

@@ -19,18 +19,27 @@ public interface DriverProfileRepository
 
         boolean existsByUserId(Long userId);
 
-        // Find first available driver with COD limit >= amount and status =
-        // ONLINE/AVAILABLE, sorted by rating
+        // Find available drivers with COD limit >= amount, within radius (using
+        // Haversine for initial filter)
+        // Returns list to be sorted by real driving distance using Mapbox API
         @Query(value = "SELECT dp.* FROM driver_profiles dp " +
                         "INNER JOIN users u ON dp.user_id = u.id " +
                         "INNER JOIN wallets w ON u.id = w.user_id " +
                         "WHERE dp.cod_limit >= :amount " +
                         "AND dp.status IN ('ONLINE', 'AVAILABLE') " +
                         "AND w.balance >= 0 " +
-                        "ORDER BY dp.average_rating DESC LIMIT 1", nativeQuery = true)
-        Optional<DriverProfile> findFirstAvailableDriverByCodLimit(@Param("amount") BigDecimal amount);
+                        "AND dp.current_latitude IS NOT NULL " +
+                        "AND dp.current_longitude IS NOT NULL " +
+                        "AND (6371 * acos(cos(radians(:restaurantLat)) * cos(radians(dp.current_latitude)) * " +
+                        "cos(radians(dp.current_longitude) - radians(:restaurantLng)) + " +
+                        "sin(radians(:restaurantLat)) * sin(radians(dp.current_latitude)))) <= :radiusKm", nativeQuery = true)
+        List<DriverProfile> findAvailableDriversByCodLimitWithinRadius(
+                        @Param("amount") BigDecimal amount,
+                        @Param("restaurantLat") BigDecimal restaurantLat,
+                        @Param("restaurantLng") BigDecimal restaurantLng,
+                        @Param("radiusKm") BigDecimal radiusKm);
 
-        // Find first available driver excluding specific driver IDs
+        // Find available drivers excluding specific driver IDs, within radius
         @Query(value = "SELECT dp.* FROM driver_profiles dp " +
                         "INNER JOIN users u ON dp.user_id = u.id " +
                         "INNER JOIN wallets w ON u.id = w.user_id " +
@@ -38,8 +47,16 @@ public interface DriverProfileRepository
                         "AND dp.status IN ('ONLINE', 'AVAILABLE') " +
                         "AND dp.user_id NOT IN :excludedDriverIds " +
                         "AND w.balance >= 0 " +
-                        "ORDER BY dp.average_rating DESC LIMIT 1", nativeQuery = true)
-        Optional<DriverProfile> findFirstAvailableDriverByCodLimitExcluding(@Param("amount") BigDecimal amount,
+                        "AND dp.current_latitude IS NOT NULL " +
+                        "AND dp.current_longitude IS NOT NULL " +
+                        "AND (6371 * acos(cos(radians(:restaurantLat)) * cos(radians(dp.current_latitude)) * " +
+                        "cos(radians(dp.current_longitude) - radians(:restaurantLng)) + " +
+                        "sin(radians(:restaurantLat)) * sin(radians(dp.current_latitude)))) <= :radiusKm", nativeQuery = true)
+        List<DriverProfile> findAvailableDriversByCodLimitExcludingWithinRadius(
+                        @Param("amount") BigDecimal amount,
+                        @Param("restaurantLat") BigDecimal restaurantLat,
+                        @Param("restaurantLng") BigDecimal restaurantLng,
+                        @Param("radiusKm") BigDecimal radiusKm,
                         @Param("excludedDriverIds") List<Long> excludedDriverIds);
 
         @Query(value = "SELECT dp.* FROM driver_profiles dp " +
@@ -47,8 +64,15 @@ public interface DriverProfileRepository
                         "INNER JOIN wallets w ON u.id = w.user_id " +
                         "WHERE dp.status IN ('ONLINE', 'AVAILABLE') " +
                         "AND w.balance >= 0 " +
-                        "ORDER BY dp.average_rating DESC LIMIT 1", nativeQuery = true)
-        Optional<DriverProfile> findFirstAvailableDriver();
+                        "AND dp.current_latitude IS NOT NULL " +
+                        "AND dp.current_longitude IS NOT NULL " +
+                        "AND (6371 * acos(cos(radians(:restaurantLat)) * cos(radians(dp.current_latitude)) * " +
+                        "cos(radians(dp.current_longitude) - radians(:restaurantLng)) + " +
+                        "sin(radians(:restaurantLat)) * sin(radians(dp.current_latitude)))) <= :radiusKm", nativeQuery = true)
+        List<DriverProfile> findAvailableDriversWithinRadius(
+                        @Param("restaurantLat") BigDecimal restaurantLat,
+                        @Param("restaurantLng") BigDecimal restaurantLng,
+                        @Param("radiusKm") BigDecimal radiusKm);
 
         @Query(value = "SELECT dp.* FROM driver_profiles dp " +
                         "INNER JOIN users u ON dp.user_id = u.id " +
@@ -56,7 +80,14 @@ public interface DriverProfileRepository
                         "WHERE dp.status IN ('ONLINE', 'AVAILABLE') " +
                         "AND dp.user_id NOT IN :excludedDriverIds " +
                         "AND w.balance >= 0 " +
-                        "ORDER BY dp.average_rating DESC LIMIT 1", nativeQuery = true)
-        Optional<DriverProfile> findFirstAvailableDriverExcluding(
+                        "AND dp.current_latitude IS NOT NULL " +
+                        "AND dp.current_longitude IS NOT NULL " +
+                        "AND (6371 * acos(cos(radians(:restaurantLat)) * cos(radians(dp.current_latitude)) * " +
+                        "cos(radians(dp.current_longitude) - radians(:restaurantLng)) + " +
+                        "sin(radians(:restaurantLat)) * sin(radians(dp.current_latitude)))) <= :radiusKm", nativeQuery = true)
+        List<DriverProfile> findAvailableDriversExcludingWithinRadius(
+                        @Param("restaurantLat") BigDecimal restaurantLat,
+                        @Param("restaurantLng") BigDecimal restaurantLng,
+                        @Param("radiusKm") BigDecimal radiusKm,
                         @Param("excludedDriverIds") List<Long> excludedDriverIds);
 }

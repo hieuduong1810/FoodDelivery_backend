@@ -213,19 +213,6 @@ public class RestaurantService {
         return convertToResRestaurantDTO(updatedRestaurant);
     }
 
-    public ResultPaginationDTO getAllRestaurants(Specification<Restaurant> spec, Pageable pageable) {
-        Page<Restaurant> page = this.restaurantRepository.findAll(spec, pageable);
-        ResultPaginationDTO result = new ResultPaginationDTO();
-        ResultPaginationDTO.Meta meta = new ResultPaginationDTO.Meta();
-        meta.setPage(pageable.getPageNumber() + 1);
-        meta.setPageSize(pageable.getPageSize());
-        meta.setTotal(page.getTotalElements());
-        meta.setPages(page.getTotalPages());
-        result.setMeta(meta);
-        result.setResult(page.getContent());
-        return result;
-    }
-
     public ResultPaginationDTO getAllRestaurantsDTO(Specification<Restaurant> spec, Pageable pageable) {
         Page<Restaurant> page = this.restaurantRepository.findAll(spec, pageable);
         ResultPaginationDTO result = new ResultPaginationDTO();
@@ -244,5 +231,33 @@ public class RestaurantService {
 
     public void deleteRestaurant(Long id) {
         this.restaurantRepository.deleteById(id);
+    }
+
+    /**
+     * Owner opens restaurant - set status to OPEN
+     */
+    public ResRestaurantDTO openRestaurant(Long restaurantId) throws IdInvalidException {
+        Restaurant restaurant = getRestaurantById(restaurantId);
+        if (restaurant == null) {
+            throw new IdInvalidException("Restaurant not found with id: " + restaurantId);
+        }
+
+        restaurant.setStatus("OPEN");
+        Restaurant savedRestaurant = restaurantRepository.save(restaurant);
+        return convertToResRestaurantDTO(savedRestaurant);
+    }
+
+    /**
+     * Owner closes restaurant - set status to CLOSED
+     */
+    public ResRestaurantDTO closeRestaurant(Long restaurantId) throws IdInvalidException {
+        Restaurant restaurant = getRestaurantById(restaurantId);
+        if (restaurant == null) {
+            throw new IdInvalidException("Restaurant not found with id: " + restaurantId);
+        }
+
+        restaurant.setStatus("CLOSED");
+        Restaurant savedRestaurant = restaurantRepository.save(restaurant);
+        return convertToResRestaurantDTO(savedRestaurant);
     }
 }

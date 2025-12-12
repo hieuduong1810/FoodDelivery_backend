@@ -234,6 +234,84 @@ public class DriverProfileService {
         return convertToResDriverProfileDTO(savedProfile);
     }
 
+    /**
+     * Update driver profile status by user ID
+     */
+    public void updateDriverProfileStatusByUserId(Long userId, String status) throws IdInvalidException {
+        Optional<DriverProfile> profileOpt = driverProfileRepository.findByUserId(userId);
+        if (profileOpt.isPresent()) {
+            DriverProfile profile = profileOpt.get();
+            profile.setStatus(status);
+            driverProfileRepository.save(profile);
+        } else {
+            throw new IdInvalidException("Driver profile not found for user id: " + userId);
+        }
+    }
+
+    /**
+     * Driver goes online (opens app) - set status to AVAILABLE
+     */
+    public ResDriverProfileDTO goOnline() throws IdInvalidException {
+        // Get current driver from JWT token
+        String currentUserEmail = com.example.FoodDelivery.util.SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("User not authenticated"));
+
+        User driver = this.userService.handleGetUserByUsername(currentUserEmail);
+        if (driver == null) {
+            throw new IdInvalidException("Driver not found with email: " + currentUserEmail);
+        }
+
+        Optional<DriverProfile> profileOpt = driverProfileRepository.findByUserId(driver.getId());
+        if (!profileOpt.isPresent()) {
+            throw new IdInvalidException("Driver profile not found for user id: " + driver.getId());
+        }
+
+        DriverProfile profile = profileOpt.get();
+        profile.setStatus("AVAILABLE");
+        DriverProfile savedProfile = driverProfileRepository.save(profile);
+        return convertToResDriverProfileDTO(savedProfile);
+    }
+
+    /**
+     * Driver goes offline (closes app) - set status to OFFLINE
+     */
+    public ResDriverProfileDTO goOffline() throws IdInvalidException {
+        // Get current driver from JWT token
+        String currentUserEmail = com.example.FoodDelivery.util.SecurityUtil.getCurrentUserLogin()
+                .orElseThrow(() -> new IdInvalidException("User not authenticated"));
+
+        User driver = this.userService.handleGetUserByUsername(currentUserEmail);
+        if (driver == null) {
+            throw new IdInvalidException("Driver not found with email: " + currentUserEmail);
+        }
+
+        Optional<DriverProfile> profileOpt = driverProfileRepository.findByUserId(driver.getId());
+        if (!profileOpt.isPresent()) {
+            throw new IdInvalidException("Driver profile not found for user id: " + driver.getId());
+        }
+
+        DriverProfile profile = profileOpt.get();
+        profile.setStatus("OFFLINE");
+        DriverProfile savedProfile = driverProfileRepository.save(profile);
+        return convertToResDriverProfileDTO(savedProfile);
+    }
+
+    /**
+     * Update driver location (latitude, longitude)
+     */
+    public void updateDriverLocation(Long userId, java.math.BigDecimal latitude, java.math.BigDecimal longitude)
+            throws IdInvalidException {
+        Optional<DriverProfile> profileOpt = driverProfileRepository.findByUserId(userId);
+        if (profileOpt.isPresent()) {
+            DriverProfile profile = profileOpt.get();
+            profile.setCurrentLatitude(latitude);
+            profile.setCurrentLongitude(longitude);
+            driverProfileRepository.save(profile);
+        } else {
+            throw new IdInvalidException("Driver profile not found for user id: " + userId);
+        }
+    }
+
     public ResultPaginationDTO getAllDriverProfiles(Specification<DriverProfile> spec, Pageable pageable) {
         Page<DriverProfile> page = this.driverProfileRepository.findAll(spec, pageable);
         ResultPaginationDTO result = new ResultPaginationDTO();
@@ -263,11 +341,12 @@ public class DriverProfileService {
      * @param orderAmount Order total amount
      * @return Driver profile with highest rating or null if none found
      */
-    public ResDriverProfileDTO getFirstAvailableDriverByCodLimit(java.math.BigDecimal orderAmount) {
-        java.util.Optional<DriverProfile> driverOpt = driverProfileRepository
-                .findFirstAvailableDriverByCodLimit(orderAmount);
-        return driverOpt.map(this::convertToResDriverProfileDTO).orElse(null);
-    }
+    // public ResDriverProfileDTO
+    // getFirstAvailableDriverByCodLimit(java.math.BigDecimal orderAmount) {
+    // java.util.Optional<DriverProfile> driverOpt = driverProfileRepository
+    // .findFirstAvailableDriverByCodLimit(orderAmount);
+    // return driverOpt.map(this::convertToResDriverProfileDTO).orElse(null);
+    // }
 
     /**
      * Convert DriverProfile to ResDriverProfileDTO

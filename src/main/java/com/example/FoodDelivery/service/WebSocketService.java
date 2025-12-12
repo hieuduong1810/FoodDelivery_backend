@@ -4,6 +4,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import com.example.FoodDelivery.domain.res.order.ResOrderDTO;
+import com.example.FoodDelivery.domain.res.websocket.DriverLocationUpdate;
 import com.example.FoodDelivery.domain.res.websocket.OrderNotification;
 
 import lombok.extern.slf4j.Slf4j;
@@ -95,5 +96,17 @@ public class WebSocketService {
         }
 
         log.info("Broadcasted ORDER_STATUS_CHANGED for order {}", order.getId());
+    }
+
+    /**
+     * Broadcast driver location to customer
+     */
+    public void broadcastDriverLocation(Long customerId, DriverLocationUpdate locationUpdate) {
+        String destination = "/topic/customer/" + customerId + "/driver-location";
+        messagingTemplate.convertAndSend(destination, locationUpdate);
+        log.debug("Sent driver location to customer {} at {}: {}, {}",
+                customerId, destination,
+                locationUpdate.getLatitude(),
+                locationUpdate.getLongitude());
     }
 }
