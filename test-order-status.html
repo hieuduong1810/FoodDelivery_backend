@@ -88,7 +88,7 @@
         let currentSubscription = null;
 
         function connect() {
-            const socket = new SockJS('http://localhost:8080/ws');
+            const socket = new SockJS('https://eatzy-be.hoanduong.net/ws');
             stompClient = Stomp.over(socket);
 
             stompClient.connect({}, function (frame) {

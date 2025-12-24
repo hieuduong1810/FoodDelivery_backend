@@ -11,8 +11,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class DriverLocationUpdate {
-    private Long driverId;
-    private Long orderId;
     private BigDecimal latitude;
     private BigDecimal longitude;
     private Instant timestamp;

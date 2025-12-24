@@ -69,12 +69,14 @@ public class RestaurantController {
     public ResponseEntity<ResultPaginationDTO> getNearbyRestaurants(
             @RequestParam("latitude") BigDecimal latitude,
             @RequestParam("longitude") BigDecimal longitude,
+            @RequestParam(value = "search", required = false) String searchKeyword,
             @Filter Specification<Restaurant> spec,
             Pageable pageable) throws IdInvalidException {
         if (latitude == null || longitude == null) {
             throw new IdInvalidException("Latitude and longitude are required");
         }
-        ResultPaginationDTO result = restaurantService.getNearbyRestaurants(latitude, longitude, spec, pageable);
+        ResultPaginationDTO result = restaurantService.getNearbyRestaurants(latitude, longitude, searchKeyword, spec,
+                pageable);
         return ResponseEntity.ok(result);
     }
 

@@ -36,16 +36,19 @@ public class RestaurantService {
     private final RestaurantTypeRepository restaurantTypeRepository;
     private final MapboxService mapboxService;
     private final SystemConfigurationService systemConfigurationService;
+    private final RedisCacheService redisCacheService;
 
     public RestaurantService(RestaurantRepository restaurantRepository, UserService userService,
             RestaurantTypeRepository restaurantTypeRepository,
             MapboxService mapboxService,
-            SystemConfigurationService systemConfigurationService) {
+            SystemConfigurationService systemConfigurationService,
+            RedisCacheService redisCacheService) {
         this.restaurantRepository = restaurantRepository;
         this.userService = userService;
         this.restaurantTypeRepository = restaurantTypeRepository;
         this.mapboxService = mapboxService;
         this.systemConfigurationService = systemConfigurationService;
+        this.redisCacheService = redisCacheService;
     }
 
     public boolean existsByName(String name) {
@@ -265,7 +268,12 @@ public class RestaurantService {
             currentRestaurant.setRestaurantTypes(restaurantTypes);
         }
 
-        return restaurantRepository.save(currentRestaurant);
+        Restaurant savedRestaurant = restaurantRepository.save(currentRestaurant);
+
+        // Clear search cache when restaurant data changes
+        clearSearchCache();
+
+        return savedRestaurant;
     }
 
     public ResRestaurantDTO updateRestaurantDTO(Restaurant restaurant) throws IdInvalidException {
@@ -325,15 +333,32 @@ public class RestaurantService {
      * Get restaurants within maximum distance from user location
      * Uses Mapbox API to calculate real driving distance
      * Supports filtering and pagination
+     * WITH REDIS CACHE for search results
      * 
-     * @param latitude  User's latitude
-     * @param longitude User's longitude
-     * @param spec      Specification for filtering
-     * @param pageable  Pagination information
+     * @param latitude      User's latitude
+     * @param longitude     User's longitude
+     * @param searchKeyword Search keyword for restaurant name, dish name, or
+     *                      category name
+     * @param spec          Specification for additional filtering
+     * @param pageable      Pagination information
      * @return Paginated list of nearby restaurants with distance
      */
     public ResultPaginationDTO getNearbyRestaurants(BigDecimal latitude, BigDecimal longitude,
-            Specification<Restaurant> spec, Pageable pageable) {
+            String searchKeyword, Specification<Restaurant> spec, Pageable pageable) {
+
+        // 1. Build cache key
+        String cacheKey = buildCacheKey(latitude, longitude, searchKeyword, pageable);
+
+        // 2. Check cache first
+        Object cachedResult = redisCacheService.get(cacheKey);
+        if (cachedResult != null && cachedResult instanceof ResultPaginationDTO) {
+            log.info("🎯 CACHE HIT for key: {}", cacheKey);
+            return (ResultPaginationDTO) cachedResult;
+        }
+
+        log.info("❌ CACHE MISS for key: {}", cacheKey);
+
+        // 3. Cache miss - Query database
         // Get max distance from configuration (default 10 km)
         BigDecimal maxDistanceKm = new BigDecimal("10.0");
         try {
@@ -346,10 +371,53 @@ public class RestaurantService {
             log.warn("Failed to get MAX_RESTAURANT_DISTANCE_KM config, using default {} km", maxDistanceKm);
         }
 
+        // Build search specification if keyword is provided
+        Specification<Restaurant> finalSpec = spec;
+        if (searchKeyword != null && !searchKeyword.trim().isEmpty()) {
+            String keyword = "%" + searchKeyword.trim().toLowerCase() + "%";
+
+            Specification<Restaurant> searchSpec = (root, query, criteriaBuilder) -> {
+                // Search in restaurant name
+                var restaurantNamePredicate = criteriaBuilder.like(
+                        criteriaBuilder.lower(root.get("name")), keyword);
+
+                // Search in dish names (via dishCategories -> dishes)
+                var dishSubquery = query.subquery(Long.class);
+                var dishRoot = dishSubquery.from(Restaurant.class);
+                var dishCategoryJoin = dishRoot.join("dishCategories");
+                var dishJoin = dishCategoryJoin.join("dishes");
+                dishSubquery.select(dishRoot.get("id"))
+                        .where(
+                                criteriaBuilder.and(
+                                        criteriaBuilder.equal(dishRoot.get("id"), root.get("id")),
+                                        criteriaBuilder.like(
+                                                criteriaBuilder.lower(dishJoin.get("name")), keyword)));
+                var dishPredicate = criteriaBuilder.exists(dishSubquery);
+
+                // Search in category names (via dishCategories)
+                var categorySubquery = query.subquery(Long.class);
+                var categoryRoot = categorySubquery.from(Restaurant.class);
+                var categoryJoin = categoryRoot.join("dishCategories");
+                categorySubquery.select(categoryRoot.get("id"))
+                        .where(
+                                criteriaBuilder.and(
+                                        criteriaBuilder.equal(categoryRoot.get("id"), root.get("id")),
+                                        criteriaBuilder.like(
+                                                criteriaBuilder.lower(categoryJoin.get("name")), keyword)));
+                var categoryPredicate = criteriaBuilder.exists(categorySubquery);
+
+                // Combine with OR: restaurant name OR dish name OR category name
+                return criteriaBuilder.or(restaurantNamePredicate, dishPredicate, categoryPredicate);
+            };
+
+            // Combine search spec with existing spec
+            finalSpec = finalSpec != null ? finalSpec.and(searchSpec) : searchSpec;
+        }
+
         // Get filtered restaurants using spec
         List<Restaurant> filteredRestaurants;
-        if (spec != null) {
-            filteredRestaurants = restaurantRepository.findAll(spec);
+        if (finalSpec != null) {
+            filteredRestaurants = restaurantRepository.findAll(finalSpec);
         } else {
             filteredRestaurants = restaurantRepository.findAll();
         }
@@ -410,6 +478,32 @@ public class RestaurantService {
         result.setMeta(meta);
         result.setResult(paginatedRestaurants);
 
+        // 4. Save to cache (TTL: 5 minutes)
+        redisCacheService.set(cacheKey, result, 5, java.util.concurrent.TimeUnit.MINUTES);
+        log.info("💾 Cached result with key: {}", cacheKey);
+
         return result;
+    }
+
+    /**
+     * Build cache key for search results
+     */
+    private String buildCacheKey(BigDecimal latitude, BigDecimal longitude,
+            String searchKeyword, Pageable pageable) {
+        String keyword = searchKeyword != null ? searchKeyword.trim() : "all";
+        return String.format("search:nearby:%s:%s:%s:page:%d:size:%d",
+                latitude.toPlainString(),
+                longitude.toPlainString(),
+                keyword,
+                pageable.getPageNumber(),
+                pageable.getPageSize());
+    }
+
+    /**
+     * Clear search cache (call when restaurant data changes)
+     */
+    public void clearSearchCache() {
+        redisCacheService.deletePattern("search:nearby:*");
+        log.info("🗑️  Cleared all search cache");
     }
 }

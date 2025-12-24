@@ -60,6 +60,7 @@ public class OrderService {
     private final SystemConfigurationService systemConfigurationService;
     private final MapboxService mapboxService;
     private final DriverProfileService driverProfileService;
+    private final RedisGeoService redisGeoService;
 
     public OrderService(OrderRepository orderRepository, UserService userService,
             RestaurantService restaurantService, DishService dishService,
@@ -71,7 +72,8 @@ public class OrderService {
             WebSocketService webSocketService,
             SystemConfigurationService systemConfigurationService,
             MapboxService mapboxService,
-            @Lazy DriverProfileService driverProfileService) {
+            @Lazy DriverProfileService driverProfileService,
+            RedisGeoService redisGeoService) {
         this.orderRepository = orderRepository;
         this.userService = userService;
         this.restaurantService = restaurantService;
@@ -86,6 +88,7 @@ public class OrderService {
         this.systemConfigurationService = systemConfigurationService;
         this.mapboxService = mapboxService;
         this.driverProfileService = driverProfileService;
+        this.redisGeoService = redisGeoService;
     }
 
     private ResOrderDTO convertToResOrderDTO(Order order) {
@@ -613,38 +616,71 @@ public class OrderService {
             log.warn("Failed to get DRIVER_SEARCH_RADIUS_KM config, using default 10 km", e);
         }
 
-        // Find available drivers within radius
+        log.info("🔍 Step 1: Searching drivers using Redis GEO within {} km of restaurant (lat: {}, lng: {})",
+                radiusKm, restaurant.getLatitude(), restaurant.getLongitude());
+
+        // STEP 1: Use Redis GEO to find nearby drivers (fast spatial search with
+        // Geohash)
+        var geoResults = redisGeoService.findNearbyDrivers(
+                restaurant.getLatitude(),
+                restaurant.getLongitude(),
+                radiusKm.doubleValue(),
+                50 // Get top 50 closest drivers
+        );
+
+        if (geoResults == null || geoResults.getContent().isEmpty()) {
+            throw new IdInvalidException("No drivers found within " + radiusKm + " km radius");
+        }
+
+        // Extract driver IDs from Redis GEO results
+        List<Long> nearbyDriverIds = geoResults.getContent().stream()
+                .map(result -> {
+                    try {
+                        return Long.parseLong(result.getContent().getName().toString());
+                    } catch (Exception e) {
+                        log.error("Failed to parse driver ID: {}", result.getContent().getName());
+                        return null;
+                    }
+                })
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+
+        log.info("📍 Found {} drivers in Redis GEO within radius: {}", nearbyDriverIds.size(), nearbyDriverIds);
+
+        // STEP 2: Query SQL to validate business rules (COD limit, wallet balance,
+        // status)
         List<DriverProfile> candidateDrivers;
         if ("COD".equals(order.getPaymentMethod())) {
-            candidateDrivers = driverProfileRepository
-                    .findAvailableDriversByCodLimitWithinRadius(
-                            order.getTotalAmount(),
-                            restaurant.getLatitude(),
-                            restaurant.getLongitude(),
-                            radiusKm);
+            log.info("💰 Step 2: Validating COD limit >= {} for {} drivers",
+                    order.getTotalAmount(), nearbyDriverIds.size());
+            candidateDrivers = driverProfileRepository.findByUserIdsWithCodLimit(
+                    nearbyDriverIds,
+                    order.getTotalAmount());
         } else {
-            candidateDrivers = driverProfileRepository
-                    .findAvailableDriversWithinRadius(
-                            restaurant.getLatitude(),
-                            restaurant.getLongitude(),
-                            radiusKm);
+            log.info("💳 Step 2: Validating online payment readiness for {} drivers", nearbyDriverIds.size());
+            candidateDrivers = driverProfileRepository.findByUserIds(nearbyDriverIds);
         }
 
         if (candidateDrivers.isEmpty()) {
-            throw new IdInvalidException("No available driver found within " + radiusKm + " km radius");
+            throw new IdInvalidException("No qualified drivers found (failed business rules validation)");
         }
 
-        // Find the closest driver using Mapbox API for real driving distance
+        log.info("✅ {} drivers passed validation", candidateDrivers.size());
+
+        // STEP 3: Find the closest driver using Mapbox API for real driving distance
+        log.info("🚗 Step 3: Calculating real driving distances using Mapbox API");
         DriverProfile closestDriver = findClosestDriverWithMapbox(candidateDrivers, restaurant);
         if (closestDriver == null) {
             throw new IdInvalidException(
-                    "No available driver found (failed to calculate driving distance for all candidates)");
+                    "Failed to calculate driving distance to available drivers");
         }
 
         User driver = this.userService.getUserById(closestDriver.getUser().getId());
         if (driver == null) {
-            throw new IdInvalidException("Driver not found with id: " + closestDriver.getUser().getId());
+            throw new IdInvalidException("Driver user not found");
         }
+
+        log.info("🎯 Assigned driver {} (ID: {}) to order {}", driver.getName(), driver.getId(), orderId);
 
         order.setDriver(driver);
         order = orderRepository.save(order);
@@ -855,45 +891,68 @@ public class OrderService {
             log.warn("Failed to get DRIVER_SEARCH_RADIUS_KM config, using default 10 km", e);
         }
 
-        // Find next available drivers excluding rejected ones
+        log.info("🔍 Searching for alternative drivers using Redis GEO (excluding {} rejected drivers)",
+                rejectedDriverIds.size());
+
+        // STEP 1: Use Redis GEO to find nearby drivers
+        var geoResults = redisGeoService.findNearbyDrivers(
+                restaurant.getLatitude(),
+                restaurant.getLongitude(),
+                radiusKm.doubleValue(),
+                100 // Get more drivers since some may be rejected
+        );
+
+        if (geoResults == null || geoResults.getContent().isEmpty()) {
+            order.setDriver(null);
+            log.warn("No alternative drivers found in Redis GEO");
+            order = orderRepository.save(order);
+            ResOrderDTO orderDTO = convertToResOrderDTO(order);
+            webSocketService.notifyCustomerOrderUpdate(order.getCustomer().getId(),
+                    orderDTO, "Looking for another driver for your order");
+            return orderDTO;
+        }
+
+        // Extract driver IDs and exclude rejected ones
+        List<Long> nearbyDriverIds = geoResults.getContent().stream()
+                .map(result -> {
+                    try {
+                        return Long.parseLong(result.getContent().getName().toString());
+                    } catch (Exception e) {
+                        return null;
+                    }
+                })
+                .filter(id -> id != null && !rejectedDriverIds.contains(id))
+                .collect(Collectors.toList());
+
+        log.info("📍 Found {} available drivers (after excluding rejected)", nearbyDriverIds.size());
+
+        if (nearbyDriverIds.isEmpty()) {
+            order.setDriver(null);
+            order = orderRepository.save(order);
+            ResOrderDTO orderDTO = convertToResOrderDTO(order);
+            webSocketService.notifyCustomerOrderUpdate(order.getCustomer().getId(),
+                    orderDTO, "Looking for another driver for your order");
+            return orderDTO;
+        }
+
+        // STEP 2: Query SQL to validate business rules
         List<DriverProfile> candidateDrivers;
         if ("COD".equals(order.getPaymentMethod())) {
-            if (rejectedDriverIds.isEmpty()) {
-                candidateDrivers = driverProfileRepository
-                        .findAvailableDriversByCodLimitWithinRadius(
-                                order.getTotalAmount(),
-                                restaurant.getLatitude(),
-                                restaurant.getLongitude(),
-                                radiusKm);
-            } else {
-                candidateDrivers = driverProfileRepository.findAvailableDriversByCodLimitExcludingWithinRadius(
-                        order.getTotalAmount(),
-                        restaurant.getLatitude(),
-                        restaurant.getLongitude(),
-                        radiusKm,
-                        rejectedDriverIds);
-            }
+            candidateDrivers = driverProfileRepository.findByUserIdsWithCodLimit(
+                    nearbyDriverIds,
+                    order.getTotalAmount());
         } else {
-            if (rejectedDriverIds.isEmpty()) {
-                candidateDrivers = driverProfileRepository.findAvailableDriversWithinRadius(
-                        restaurant.getLatitude(),
-                        restaurant.getLongitude(),
-                        radiusKm);
-            } else {
-                candidateDrivers = driverProfileRepository.findAvailableDriversExcludingWithinRadius(
-                        restaurant.getLatitude(),
-                        restaurant.getLongitude(),
-                        radiusKm,
-                        rejectedDriverIds);
-            }
+            candidateDrivers = driverProfileRepository.findByUserIds(nearbyDriverIds);
         }
 
         // If we found candidates, assign the closest one using Mapbox
         if (!candidateDrivers.isEmpty()) {
+            log.info("✅ {} drivers passed validation", candidateDrivers.size());
             DriverProfile closestDriver = findClosestDriverWithMapbox(candidateDrivers, restaurant);
             if (closestDriver != null) {
                 // Assign to next driver and keep current status
                 order.setDriver(closestDriver.getUser());
+                log.info("🎯 Reassigned to driver {}", closestDriver.getUser().getId());
             } else {
                 // Failed to calculate distance for all candidates
                 order.setDriver(null);
@@ -903,6 +962,7 @@ public class OrderService {
         } else {
             // No more available drivers, set driver to null and reset status
             order.setDriver(null);
+            log.warn("No qualified drivers found after validation");
         }
 
         order = orderRepository.save(order);
