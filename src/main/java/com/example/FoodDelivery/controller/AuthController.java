@@ -143,37 +143,47 @@ public class AuthController {
                 Jwt decodedToken = this.securityUtil.checkValidRefreshToken(refresh_token);
                 String email = decodedToken.getSubject();
 
-                // check user by token + email
-                User currentUser = this.userService.getUserByRefreshTokenAndEmail(refresh_token, email);
+                // Get user from database to get userId
+                User currentUser = this.userService.handleGetUserByUsername(email);
                 if (currentUser == null) {
+                        throw new IdInvalidException("User không tồn tại");
+                }
+
+                // Check session from Redis instead of database
+                java.util.Map<String, Object> session = redisSessionService.getSession(currentUser.getId());
+                if (session == null || session.isEmpty()) {
+                        throw new IdInvalidException("Session không tồn tại hoặc đã hết hạn");
+                }
+
+                // Verify token in session matches
+                String sessionToken = (String) session.get("token");
+                if (sessionToken == null || !sessionToken.equals(refresh_token)) {
                         throw new IdInvalidException("Refresh token không hợp lệ");
                 }
 
                 // issue new token/set refresh token as cookies
                 ResLoginDTO resLoginDTO = new ResLoginDTO();
-                User currentUserDB = this.userService
-                                .handleGetUserByUsername(email);
-                if (currentUserDB != null) {
-                        ResLoginDTO.UserLogin userLogin = resLoginDTO.new UserLogin(currentUserDB.getId(),
-                                        currentUserDB.getEmail(), currentUserDB.getName(), currentUserDB.getRole());
-                        resLoginDTO.setUser(userLogin);
-                }
+                ResLoginDTO.UserLogin userLogin = resLoginDTO.new UserLogin(
+                                currentUser.getId(),
+                                currentUser.getEmail(),
+                                currentUser.getName(),
+                                currentUser.getRole());
+                resLoginDTO.setUser(userLogin);
 
-                String access_token = this.securityUtil.createAccessToken(email,
-                                resLoginDTO);
-
+                String access_token = this.securityUtil.createAccessToken(email, resLoginDTO);
                 resLoginDTO.setAccessToken(access_token);
 
                 // create refresh token
-                String new_refresh_token = this.securityUtil.createRefreshToken(email,
-                                resLoginDTO);
+                String new_refresh_token = this.securityUtil.createRefreshToken(email, resLoginDTO);
 
-                // update user
+                // update user token in database
                 this.userService.updateUserToken(new_refresh_token, email);
 
+                // Update session in Redis with new token
+                redisSessionService.updateSession(currentUser.getId(), "token", new_refresh_token);
+
                 // set cookies
-                ResponseCookie resCookies = ResponseCookie.from("refresh_token",
-                                new_refresh_token)
+                ResponseCookie resCookies = ResponseCookie.from("refresh_token", new_refresh_token)
                                 .httpOnly(true)
                                 .secure(true)
                                 .path("/")
