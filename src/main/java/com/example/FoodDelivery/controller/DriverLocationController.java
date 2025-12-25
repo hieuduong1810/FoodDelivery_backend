@@ -1,18 +1,15 @@
 package com.example.FoodDelivery.controller;
 
-import java.math.BigDecimal;
-import java.security.Principal;
 import java.time.Instant;
 
-import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Controller;
 
+import com.example.FoodDelivery.domain.User;
 import com.example.FoodDelivery.domain.res.websocket.DriverLocationUpdate;
-import com.example.FoodDelivery.service.DriverProfileService;
-import com.example.FoodDelivery.service.OrderService;
-import com.example.FoodDelivery.service.WebSocketService;
+import com.example.FoodDelivery.service.RedisGeoService;
+import com.example.FoodDelivery.service.UserService;
 import com.example.FoodDelivery.util.error.IdInvalidException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -21,62 +18,51 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class DriverLocationController {
 
-    private final WebSocketService webSocketService;
-    private final DriverProfileService driverProfileService;
-    private final OrderService orderService;
+    private final RedisGeoService redisGeoService;
+    private final UserService userService;
 
-    public DriverLocationController(WebSocketService webSocketService,
-            DriverProfileService driverProfileService,
-            OrderService orderService) {
-        this.webSocketService = webSocketService;
-        this.driverProfileService = driverProfileService;
-        this.orderService = orderService;
+    public DriverLocationController(
+            RedisGeoService redisGeoService,
+            UserService userService) {
+        this.redisGeoService = redisGeoService;
+        this.userService = userService;
     }
 
     /**
      * Handle driver location updates
-     * Driver sends location via: /app/driver/location/{orderId}
-     * Customer receives at: /topic/customer/{customerId}/driver-location
+     * Driver sends location via: /app/driver/location
+     * Location is stored in Redis GEO for real-time tracking
      */
-    @MessageMapping("/driver/location/{orderId}")
-    public void updateDriverLocation(@DestinationVariable("orderId") Long orderId,
-            @Payload DriverLocationUpdate locationUpdate,
-            Principal principal) {
-        String authenticatedUser = principal != null ? principal.getName() : "anonymous";
-        log.debug("Received location update for order {} (authenticated user: {})",
-                orderId, authenticatedUser);
+    @MessageMapping("/driver/location")
+    public void updateDriverLocation(@Payload DriverLocationUpdate locationUpdate) {
+        // Get authenticated driver
+        String currentUserEmail = com.example.FoodDelivery.util.SecurityUtil.getCurrentUserLogin()
+                .orElse(null);
 
-        // Verify order exists
-        var order = orderService.getOrderById(orderId);
-        if (order == null) {
-            log.error("Order {} not found", orderId);
+        if (currentUserEmail == null) {
+            log.error("User not authenticated");
             return;
         }
 
-        // Verify driver is authenticated and assigned to this order
-        if (order.getDriver() == null) {
-            log.error("No driver assigned to order {}", orderId);
+        User driver = this.userService.handleGetUserByUsername(currentUserEmail);
+
+        if (driver == null) {
+            log.error("Driver not found: {}", currentUserEmail);
             return;
         }
 
         // Set timestamp
         locationUpdate.setTimestamp(Instant.now());
 
-        // Update driver profile location in database
-        try {
-            driverProfileService.updateDriverLocation(
-                    order.getDriver().getId(),
-                    locationUpdate.getLatitude(),
-                    locationUpdate.getLongitude());
-            log.debug("Updated driver {} location in database: {}, {}",
-                    order.getDriver().getId(),
-                    locationUpdate.getLatitude(),
-                    locationUpdate.getLongitude());
-        } catch (IdInvalidException e) {
-            log.error("Failed to update driver location: {}", e.getMessage());
-        }
+        // Save location to Redis GEO
+        redisGeoService.updateDriverLocation(
+                driver.getId(),
+                locationUpdate.getLatitude(),
+                locationUpdate.getLongitude());
 
-        // Broadcast location to customer
-        webSocketService.broadcastDriverLocation(order.getCustomer().getId(), locationUpdate);
+        log.debug("📍 Driver {} location updated in Redis GEO: lat={}, lng={}",
+                driver.getId(),
+                locationUpdate.getLatitude(),
+                locationUpdate.getLongitude());
     }
 }
