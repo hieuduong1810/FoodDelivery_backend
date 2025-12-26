@@ -25,7 +25,7 @@ public class Review {
     private User customer;
 
     private String reviewTarget;
-    private Long targetId;
+    private String targetName;
     private Integer rating;
 
     @Column(columnDefinition = "TEXT")

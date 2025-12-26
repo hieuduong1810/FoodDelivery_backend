@@ -8,6 +8,7 @@ import com.turkraft.springfilter.boot.Filter;
 import jakarta.validation.Valid;
 import com.example.FoodDelivery.domain.Review;
 import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
+import com.example.FoodDelivery.domain.res.review.ResReviewDTO;
 import com.example.FoodDelivery.service.ReviewService;
 import com.example.FoodDelivery.util.annotation.ApiMessage;
 import com.example.FoodDelivery.util.error.IdInvalidException;
@@ -36,17 +37,17 @@ public class ReviewController {
 
     @PostMapping("/reviews")
     @ApiMessage("Create new review")
-    public ResponseEntity<Review> createReview(@Valid @RequestBody Review review)
+    public ResponseEntity<ResReviewDTO> createReview(@Valid @RequestBody Review review)
             throws IdInvalidException {
-        Review createdReview = reviewService.createReview(review);
+        ResReviewDTO createdReview = reviewService.createReview(review);
         return ResponseEntity.ok(createdReview);
     }
 
     @PutMapping("/reviews")
     @ApiMessage("Update review")
-    public ResponseEntity<Review> updateReview(@RequestBody Review review)
+    public ResponseEntity<ResReviewDTO> updateReview(@RequestBody Review review)
             throws IdInvalidException {
-        Review updatedReview = reviewService.updateReview(review);
+        ResReviewDTO updatedReview = reviewService.updateReview(review);
         return ResponseEntity.ok(updatedReview);
     }
 
@@ -60,8 +61,8 @@ public class ReviewController {
 
     @GetMapping("/reviews/{id}")
     @ApiMessage("Get review by id")
-    public ResponseEntity<Review> getReviewById(@PathVariable("id") Long id) throws IdInvalidException {
-        Review review = reviewService.getReviewById(id);
+    public ResponseEntity<ResReviewDTO> getReviewById(@PathVariable("id") Long id) throws IdInvalidException {
+        ResReviewDTO review = reviewService.getReviewById(id);
         if (review == null) {
             throw new IdInvalidException("Review not found with id: " + id);
         }
@@ -70,34 +71,30 @@ public class ReviewController {
 
     @GetMapping("/reviews/customer/{customerId}")
     @ApiMessage("Get reviews by customer id")
-    public ResponseEntity<List<Review>> getReviewsByCustomerId(@PathVariable("customerId") Long customerId) {
-        List<Review> reviews = reviewService.getReviewsByCustomerId(customerId);
+    public ResponseEntity<List<ResReviewDTO>> getReviewsByCustomerId(@PathVariable("customerId") Long customerId) {
+        List<ResReviewDTO> reviews = reviewService.getReviewsByCustomerId(customerId);
         return ResponseEntity.ok(reviews);
     }
 
     @GetMapping("/reviews/order/{orderId}")
     @ApiMessage("Get reviews by order id")
-    public ResponseEntity<List<Review>> getReviewsByOrderId(@PathVariable("orderId") Long orderId) {
-        List<Review> reviews = reviewService.getReviewsByOrderId(orderId);
+    public ResponseEntity<List<ResReviewDTO>> getReviewsByOrderId(@PathVariable("orderId") Long orderId) {
+        List<ResReviewDTO> reviews = reviewService.getReviewsByOrderId(orderId);
         return ResponseEntity.ok(reviews);
     }
 
     @GetMapping("/reviews/target")
     @ApiMessage("Get reviews by target")
-    public ResponseEntity<List<Review>> getReviewsByTarget(
+    public ResponseEntity<List<ResReviewDTO>> getReviewsByTarget(
             @RequestParam("reviewTarget") String reviewTarget,
-            @RequestParam("targetId") Long targetId) {
-        List<Review> reviews = reviewService.getReviewsByTarget(reviewTarget, targetId);
+            @RequestParam("targetName") String targetName) {
+        List<ResReviewDTO> reviews = reviewService.getReviewsByTarget(reviewTarget, targetName);
         return ResponseEntity.ok(reviews);
     }
 
     @DeleteMapping("/reviews/{id}")
     @ApiMessage("Delete review by id")
     public ResponseEntity<Void> deleteReview(@PathVariable("id") Long id) throws IdInvalidException {
-        Review review = reviewService.getReviewById(id);
-        if (review == null) {
-            throw new IdInvalidException("Review not found with id: " + id);
-        }
         reviewService.deleteReview(id);
         return ResponseEntity.ok().body(null);
     }
