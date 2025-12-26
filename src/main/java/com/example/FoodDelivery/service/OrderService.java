@@ -24,6 +24,7 @@ import com.example.FoodDelivery.domain.OrderItemOption;
 import com.example.FoodDelivery.domain.Restaurant;
 import com.example.FoodDelivery.domain.SystemConfiguration;
 import com.example.FoodDelivery.domain.User;
+import com.example.FoodDelivery.domain.Voucher;
 import com.example.FoodDelivery.domain.req.ReqOrderDTO;
 import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
 import com.example.FoodDelivery.domain.res.order.ResOrderDTO;
@@ -52,6 +53,7 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final UserService userService;
     private final RestaurantService restaurantService;
+    private final VoucherService voucherService;
     private final DishService dishService;
     private final MenuOptionRepository menuOptionRepository;
     private final DriverProfileRepository driverProfileRepository;
@@ -65,7 +67,7 @@ public class OrderService {
     private final RedisRejectionService redisRejectionService;
 
     public OrderService(OrderRepository orderRepository, UserService userService,
-            RestaurantService restaurantService, DishService dishService,
+            RestaurantService restaurantService, VoucherService voucherService, DishService dishService,
             MenuOptionRepository menuOptionRepository, @Lazy OrderEarningsSummaryService orderEarningsSummaryService,
             DriverProfileRepository driverProfileRepository,
             PaymentService paymentService,
@@ -79,6 +81,7 @@ public class OrderService {
         this.orderRepository = orderRepository;
         this.userService = userService;
         this.restaurantService = restaurantService;
+        this.voucherService = voucherService;
         this.dishService = dishService;
         this.menuOptionRepository = menuOptionRepository;
         this.orderEarningsSummaryService = orderEarningsSummaryService;
@@ -103,6 +106,7 @@ public class OrderService {
         dto.setSpecialInstructions(order.getSpecialInstructions());
         dto.setSubtotal(order.getSubtotal());
         dto.setDeliveryFee(order.getDeliveryFee());
+        dto.setDiscountAmount(order.getDiscountAmount());
         dto.setTotalAmount(order.getTotalAmount());
         dto.setPaymentMethod(order.getPaymentMethod());
         dto.setPaymentStatus(order.getPaymentStatus());
@@ -133,6 +137,14 @@ public class OrderService {
             driver.setId(order.getDriver().getId());
             driver.setName(order.getDriver().getName());
             dto.setDriver(driver);
+        }
+
+        // Convert voucher
+        if (order.getVoucher() != null) {
+            ResOrderDTO.Voucher voucher = new ResOrderDTO.Voucher();
+            voucher.setId(order.getVoucher().getId());
+            voucher.setCode(order.getVoucher().getCode());
+            dto.setVoucher(voucher);
         }
 
         // Convert order items
@@ -254,6 +266,69 @@ public class OrderService {
                     totalFee, baseFee, extraFee, extraDistance);
             return totalFee;
         }
+    }
+
+    /**
+     * Helper method to calculate voucher discount amount
+     */
+    private BigDecimal calculateVoucherDiscount(Voucher voucher, BigDecimal subtotal, BigDecimal deliveryFee) {
+        if (voucher == null) {
+            return BigDecimal.ZERO;
+        }
+
+        // Check if order meets minimum order value requirement
+        if (voucher.getMinOrderValue() != null && subtotal.compareTo(voucher.getMinOrderValue()) < 0) {
+            log.warn("Order subtotal {} does not meet minimum order value {} for voucher {}",
+                    subtotal, voucher.getMinOrderValue(), voucher.getCode());
+            return BigDecimal.ZERO;
+        }
+
+        // Check if voucher is still valid (not expired)
+        Instant now = Instant.now();
+        if (voucher.getStartDate() != null && now.isBefore(voucher.getStartDate())) {
+            log.warn("Voucher {} has not started yet", voucher.getCode());
+            return BigDecimal.ZERO;
+        }
+        if (voucher.getEndDate() != null && now.isAfter(voucher.getEndDate())) {
+            log.warn("Voucher {} has expired", voucher.getCode());
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal discountAmount = BigDecimal.ZERO;
+
+        // Calculate discount based on type
+        if ("PERCENTAGE".equals(voucher.getDiscountType())) {
+            // Percentage discount: subtotal * (discountValue / 100)
+            discountAmount = subtotal
+                    .multiply(voucher.getDiscountValue())
+                    .divide(new BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
+            log.info("Calculated percentage discount: {} ({}% of {})",
+                    discountAmount, voucher.getDiscountValue(), subtotal);
+
+            // Check if discount exceeds maxDiscountAmount for percentage type
+            if (voucher.getMaxDiscountAmount() != null
+                    && discountAmount.compareTo(voucher.getMaxDiscountAmount()) > 0) {
+                discountAmount = voucher.getMaxDiscountAmount();
+                log.info("Discount amount capped at maxDiscountAmount: {}", voucher.getMaxDiscountAmount());
+            }
+        } else if ("FIXED".equals(voucher.getDiscountType())) {
+            // Fixed discount: use discountValue directly
+            discountAmount = voucher.getDiscountValue();
+            log.info("Applied fixed discount: {}", discountAmount);
+        } else if ("FREESHIP".equals(voucher.getDiscountType())) {
+            // Free shipping: discount equals delivery fee
+            discountAmount = deliveryFee;
+            log.info("Applied free shipping discount: {}", discountAmount);
+        }
+
+        // Make sure discount doesn't exceed subtotal
+        if (discountAmount.compareTo(subtotal) > 0) {
+            discountAmount = subtotal;
+            log.warn("Discount amount {} exceeds subtotal {}, capping at subtotal",
+                    discountAmount, subtotal);
+        }
+
+        return discountAmount;
     }
 
     /**
@@ -392,6 +467,16 @@ public class OrderService {
             order.setDriver(driver);
         }
 
+        // Set voucher if provided
+        if (reqOrderDTO.getVoucher() != null && reqOrderDTO.getVoucher().getId() != null) {
+            Voucher voucher = this.voucherService.getVoucherById(reqOrderDTO.getVoucher().getId());
+
+            if (voucher == null) {
+                throw new IdInvalidException("Voucher not found with id: " + reqOrderDTO.getVoucher().getId());
+            }
+            order.setVoucher(voucher);
+        }
+
         // Set order fields
         order.setOrderStatus(reqOrderDTO.getOrderStatus() != null ? reqOrderDTO.getOrderStatus() : "PENDING");
         order.setDeliveryAddress(reqOrderDTO.getDeliveryAddress());
@@ -490,7 +575,17 @@ public class OrderService {
                 savedOrder.getDeliveryLatitude(),
                 savedOrder.getDeliveryLongitude());
         savedOrder.setDeliveryFee(deliveryFee);
-        savedOrder.setTotalAmount(subtotal.add(deliveryFee));
+
+        // Calculate voucher discount (including free shipping)
+        BigDecimal discountAmount = calculateVoucherDiscount(savedOrder.getVoucher(), subtotal, deliveryFee);
+        savedOrder.setDiscountAmount(discountAmount);
+
+        // Calculate total amount: subtotal + deliveryFee - discountAmount
+        BigDecimal totalAmount = subtotal.add(deliveryFee).subtract(discountAmount);
+        savedOrder.setTotalAmount(totalAmount);
+
+        log.info("Order {} - Subtotal: {}, Delivery Fee: {}, Discount: {}, Total: {}",
+                savedOrder.getId(), subtotal, deliveryFee, discountAmount, totalAmount);
 
         savedOrder = orderRepository.save(savedOrder);
 

@@ -29,6 +29,9 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     List<Order> findByCustomerIdOrderByCreatedAtDesc(Long customerId);
 
+    // Count how many times a customer has used a specific voucher
+    Long countByCustomerIdAndVoucherId(Long customerId, Long voucherId);
+
     List<Order> findByDriverIdOrderByCreatedAtDesc(Long driverId);
 
     List<Order> findByPaymentMethodAndPaymentStatusAndCreatedAtBefore(String paymentMethod, String paymentStatus,

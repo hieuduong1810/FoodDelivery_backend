@@ -6,8 +6,12 @@ import org.springframework.web.bind.annotation.RestController;
 import com.turkraft.springfilter.boot.Filter;
 
 import jakarta.validation.Valid;
+
+import com.example.FoodDelivery.domain.User;
 import com.example.FoodDelivery.domain.Voucher;
 import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
+import com.example.FoodDelivery.domain.res.user.ResUserDTO;
+import com.example.FoodDelivery.domain.res.voucher.resVoucherDTO;
 import com.example.FoodDelivery.service.VoucherService;
 import com.example.FoodDelivery.util.annotation.ApiMessage;
 import com.example.FoodDelivery.util.error.IdInvalidException;
@@ -35,17 +39,17 @@ public class VoucherController {
 
     @PostMapping("/vouchers")
     @ApiMessage("Create new voucher")
-    public ResponseEntity<Voucher> createVoucher(@Valid @RequestBody Voucher voucher)
+    public ResponseEntity<resVoucherDTO> createVoucher(@Valid @RequestBody Voucher voucher)
             throws IdInvalidException {
-        Voucher createdVoucher = voucherService.createVoucher(voucher);
+        resVoucherDTO createdVoucher = voucherService.createVoucher(voucher);
         return ResponseEntity.ok(createdVoucher);
     }
 
     @PutMapping("/vouchers")
     @ApiMessage("Update voucher")
-    public ResponseEntity<Voucher> updateVoucher(@RequestBody Voucher voucher)
+    public ResponseEntity<resVoucherDTO> updateVoucher(@RequestBody Voucher voucher)
             throws IdInvalidException {
-        Voucher updatedVoucher = voucherService.updateVoucher(voucher);
+        resVoucherDTO updatedVoucher = voucherService.updateVoucher(voucher);
         return ResponseEntity.ok(updatedVoucher);
     }
 
@@ -59,18 +63,19 @@ public class VoucherController {
 
     @GetMapping("/vouchers/{id}")
     @ApiMessage("Get voucher by id")
-    public ResponseEntity<Voucher> getVoucherById(@PathVariable("id") Long id) throws IdInvalidException {
-        Voucher voucher = voucherService.getVoucherById(id);
+    public ResponseEntity<resVoucherDTO> getVoucherById(@PathVariable("id") Long id) throws IdInvalidException {
+        Voucher voucher = this.voucherService.getVoucherById(id);
         if (voucher == null) {
-            throw new IdInvalidException("Voucher not found with id: " + id);
+            throw new IdInvalidException("Voucher with id " + id + " does not exist");
         }
-        return ResponseEntity.ok(voucher);
+        resVoucherDTO resVoucherDTO = this.voucherService.convertToResVoucherDTO(voucher);
+        return ResponseEntity.ok(resVoucherDTO);
     }
 
     @GetMapping("/vouchers/code/{code}")
     @ApiMessage("Get voucher by code")
-    public ResponseEntity<Voucher> getVoucherByCode(@PathVariable("code") String code) throws IdInvalidException {
-        Voucher voucher = voucherService.getVoucherByCode(code);
+    public ResponseEntity<resVoucherDTO> getVoucherByCode(@PathVariable("code") String code) throws IdInvalidException {
+        resVoucherDTO voucher = voucherService.getVoucherByCode(code);
         if (voucher == null) {
             throw new IdInvalidException("Voucher not found with code: " + code);
         }
@@ -79,8 +84,17 @@ public class VoucherController {
 
     @GetMapping("/vouchers/restaurant/{restaurantId}")
     @ApiMessage("Get vouchers by restaurant id")
-    public ResponseEntity<List<Voucher>> getVouchersByRestaurantId(@PathVariable("restaurantId") Long restaurantId) {
-        List<Voucher> vouchers = voucherService.getVouchersByRestaurantId(restaurantId);
+    public ResponseEntity<List<resVoucherDTO>> getVouchersByRestaurantId(
+            @PathVariable("restaurantId") Long restaurantId) {
+        List<resVoucherDTO> vouchers = voucherService.getVouchersByRestaurantId(restaurantId);
+        return ResponseEntity.ok(vouchers);
+    }
+
+    @GetMapping("/vouchers/available/order/{orderId}")
+    @ApiMessage("Get available vouchers for order")
+    public ResponseEntity<List<resVoucherDTO>> getAvailableVouchersForOrder(
+            @PathVariable("orderId") Long orderId) throws IdInvalidException {
+        List<resVoucherDTO> vouchers = voucherService.getAvailableVouchersForOrder(orderId);
         return ResponseEntity.ok(vouchers);
     }
 

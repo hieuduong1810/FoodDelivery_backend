@@ -15,6 +15,8 @@ public class ReqOrderDTO {
 
     private Driver driver;
 
+    private Voucher voucher;
+
     private String orderStatus;
 
     @NotNull(message = "Địa chỉ giao hàng không được để trống")
@@ -92,6 +94,25 @@ public class ReqOrderDTO {
         }
 
         public Driver(Long id) {
+            this.id = id;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+    }
+
+    public static class Voucher {
+        private Long id;
+
+        public Voucher() {
+        }
+
+        public Voucher(Long id) {
             this.id = id;
         }
 
@@ -242,6 +263,14 @@ public class ReqOrderDTO {
 
     public void setDriver(Driver driver) {
         this.driver = driver;
+    }
+
+    public Voucher getVoucher() {
+        return voucher;
+    }
+
+    public void setVoucher(Voucher voucher) {
+        this.voucher = voucher;
     }
 
     public String getOrderStatus() {

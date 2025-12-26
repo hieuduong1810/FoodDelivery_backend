@@ -6,6 +6,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 @Entity
 @Table(name = "vouchers")
 @Getter
@@ -31,15 +33,19 @@ public class Voucher {
     @Column(precision = 10, scale = 2)
     private BigDecimal minOrderValue;
 
+    @Column(precision = 10, scale = 2)
+    private BigDecimal maxDiscountAmount;
+
+    private Integer usageLimitPerUser;
     private Instant startDate;
     private Instant endDate;
     private Integer totalQuantity;
-    private String creatorType;
 
     @ManyToOne
     @JoinColumn(name = "restaurant_id")
     private Restaurant restaurant;
 
-    @OneToMany(mappedBy = "voucher")
-    private List<OrderVoucherUsage> voucherUsages;
+    @OneToMany(mappedBy = "voucher", fetch = FetchType.LAZY)
+    @JsonIgnore
+    private List<Order> orders;
 }

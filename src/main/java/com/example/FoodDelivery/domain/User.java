@@ -84,11 +84,6 @@ public class User {
     @JsonIgnore
     private List<Order> ordersAsDriver;
 
-    // Voucher usages (One-to-Many)
-    @OneToMany(mappedBy = "customer")
-    @JsonIgnore
-    private List<OrderVoucherUsage> voucherUsages;
-
     // Reviews (One-to-Many)
     @OneToMany(mappedBy = "customer")
     @JsonIgnore

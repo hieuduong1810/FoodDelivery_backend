@@ -18,6 +18,7 @@ public class ResOrderDTO {
     private User customer;
     private Restaurant restaurant;
     private User driver;
+    private Voucher voucher;
     private String orderStatus;
     private String deliveryAddress;
     private BigDecimal deliveryLatitude;
@@ -25,6 +26,7 @@ public class ResOrderDTO {
     private String specialInstructions;
     private BigDecimal subtotal;
     private BigDecimal deliveryFee;
+    private BigDecimal discountAmount;
     private BigDecimal totalAmount;
     private String paymentMethod;
     private String paymentStatus;
@@ -51,5 +53,14 @@ public class ResOrderDTO {
     public static class Restaurant {
         private long id;
         private String name;
+    }
+
+    @Getter
+    @Setter
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class Voucher {
+        private long id;
+        private String code;
     }
 }

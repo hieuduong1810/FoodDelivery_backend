@@ -54,6 +54,9 @@ public class OrderEarningsSummary {
     private BigDecimal driverNetEarning;
 
     @Column(precision = 10, scale = 2)
+    private BigDecimal platformVoucherCost;
+
+    @Column(precision = 10, scale = 2)
     private BigDecimal platformTotalEarning;
 
     private Instant recordedAt;

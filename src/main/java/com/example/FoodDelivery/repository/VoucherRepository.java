@@ -2,16 +2,32 @@ package com.example.FoodDelivery.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.example.FoodDelivery.domain.Voucher;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.List;
 
 @Repository
 public interface VoucherRepository extends JpaRepository<Voucher, Long>, JpaSpecificationExecutor<Voucher> {
     Optional<Voucher> findByCode(String code);
+
     boolean existsByCode(String code);
+
     List<Voucher> findByRestaurantId(Long restaurantId);
+
+    @Query("SELECT v FROM Voucher v WHERE " +
+            "(v.restaurant.id = :restaurantId OR v.restaurant IS NULL) AND " +
+            "v.startDate <= :currentTime AND v.endDate >= :currentTime AND " +
+            "v.minOrderValue <= :orderValue AND " +
+            "v.totalQuantity > 0")
+    List<Voucher> findAvailableVouchersForOrder(
+            @Param("restaurantId") Long restaurantId,
+            @Param("orderValue") BigDecimal orderValue,
+            @Param("currentTime") Instant currentTime);
 }

@@ -17,10 +17,12 @@ import com.example.FoodDelivery.domain.OrderEarningsSummary;
 import com.example.FoodDelivery.domain.Restaurant;
 import com.example.FoodDelivery.domain.SystemConfiguration;
 import com.example.FoodDelivery.domain.User;
+import com.example.FoodDelivery.domain.Voucher;
 import com.example.FoodDelivery.domain.Wallet;
 import com.example.FoodDelivery.domain.WalletTransaction;
 import com.example.FoodDelivery.domain.res.ResultPaginationDTO;
 import com.example.FoodDelivery.repository.OrderEarningsSummaryRepository;
+import com.example.FoodDelivery.repository.VoucherRepository;
 import com.example.FoodDelivery.util.error.IdInvalidException;
 
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,7 @@ public class OrderEarningsSummaryService {
     private final SystemConfigurationService systemConfigurationService;
     private final WalletService walletService;
     private final WalletTransactionService walletTransactionService;
+    private final VoucherRepository voucherRepository;
 
     public OrderEarningsSummaryService(OrderEarningsSummaryRepository orderEarningsSummaryRepository,
             OrderService orderService,
@@ -42,7 +45,8 @@ public class OrderEarningsSummaryService {
             RestaurantService restaurantService,
             SystemConfigurationService systemConfigurationService,
             WalletService walletService,
-            WalletTransactionService walletTransactionService) {
+            WalletTransactionService walletTransactionService,
+            VoucherRepository voucherRepository) {
         this.orderEarningsSummaryRepository = orderEarningsSummaryRepository;
         this.orderService = orderService;
         this.userService = userService;
@@ -50,6 +54,7 @@ public class OrderEarningsSummaryService {
         this.systemConfigurationService = systemConfigurationService;
         this.walletService = walletService;
         this.walletTransactionService = walletTransactionService;
+        this.voucherRepository = voucherRepository;
     }
 
     public OrderEarningsSummary getOrderEarningsSummaryById(Long id) {
@@ -173,6 +178,7 @@ public class OrderEarningsSummaryService {
         // calculate earnings
         BigDecimal orderSubtotal = order.getSubtotal();
         BigDecimal deliveryFee = order.getDeliveryFee();
+        BigDecimal platformVoucherCost = order.getDiscountAmount();
 
         // restaurant commission
         BigDecimal restaurantCommissionAmount = orderSubtotal
@@ -188,7 +194,8 @@ public class OrderEarningsSummaryService {
 
         // platform earnings
         BigDecimal platformTotalEarning = restaurantCommissionAmount
-                .add(driverCommissionAmount);
+                .add(driverCommissionAmount)
+                .subtract(platformVoucherCost != null ? platformVoucherCost : BigDecimal.ZERO);
 
         OrderEarningsSummary summary = OrderEarningsSummary.builder()
                 .order(order)
@@ -202,11 +209,23 @@ public class OrderEarningsSummaryService {
                 .driverCommissionRate(driverCommissionRate)
                 .driverCommissionAmount(driverCommissionAmount)
                 .driverNetEarning(driverNetEarning)
+                .platformVoucherCost(platformVoucherCost)
                 .platformTotalEarning(platformTotalEarning)
                 .recordedAt(Instant.now())
                 .build();
 
         summary = orderEarningsSummaryRepository.save(summary);
+
+        // Decrement voucher totalQuantity if voucher was applied
+        if (order.getVoucher() != null && platformVoucherCost != null
+                && platformVoucherCost.compareTo(BigDecimal.ZERO) > 0) {
+            Voucher voucher = order.getVoucher();
+            if (voucher.getTotalQuantity() != null && voucher.getTotalQuantity() > 0) {
+                voucher.setTotalQuantity(voucher.getTotalQuantity() - 1);
+                voucherRepository.save(voucher);
+                log.info("Áp dụng voucher {} - Số lượng còn lại: {}", voucher.getCode(), voucher.getTotalQuantity());
+            }
+        }
 
         // Distribute money to driver and restaurant wallets
         try {

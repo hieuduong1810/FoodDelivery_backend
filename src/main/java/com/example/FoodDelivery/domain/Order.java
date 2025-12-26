@@ -30,6 +30,10 @@ public class Order {
     @JoinColumn(name = "driver_id")
     private User driver;
 
+    @ManyToOne
+    @JoinColumn(name = "voucher_id")
+    private Voucher voucher;
+
     private String orderStatus;
 
     @Column(columnDefinition = "TEXT")
@@ -51,6 +55,9 @@ public class Order {
     private BigDecimal deliveryFee;
 
     @Column(precision = 10, scale = 2)
+    private BigDecimal discountAmount;
+
+    @Column(precision = 10, scale = 2)
     private BigDecimal totalAmount;
 
     private String paymentMethod;
@@ -65,9 +72,6 @@ public class Order {
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
     private List<OrderItem> orderItems;
-
-    @OneToMany(mappedBy = "order")
-    private List<OrderVoucherUsage> voucherUsages;
 
     @OneToMany(mappedBy = "order")
     private List<Review> reviews;
