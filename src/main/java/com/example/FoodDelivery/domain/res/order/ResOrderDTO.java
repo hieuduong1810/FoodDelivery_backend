@@ -53,6 +53,7 @@ public class ResOrderDTO {
     public static class Restaurant {
         private long id;
         private String name;
+        private String address;
     }
 
     @Getter

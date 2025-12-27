@@ -128,6 +128,7 @@ public class OrderService {
             ResOrderDTO.Restaurant restaurant = new ResOrderDTO.Restaurant();
             restaurant.setId(order.getRestaurant().getId());
             restaurant.setName(order.getRestaurant().getName());
+            restaurant.setAddress(order.getRestaurant().getAddress());
             dto.setRestaurant(restaurant);
         }
 

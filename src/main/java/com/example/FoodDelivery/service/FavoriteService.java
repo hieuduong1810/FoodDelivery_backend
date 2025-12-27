@@ -53,6 +53,9 @@ public class FavoriteService {
             ResFavouriteDTO.Restaurant restaurantDTO = new ResFavouriteDTO.Restaurant();
             restaurantDTO.setId(favorite.getRestaurant().getId());
             restaurantDTO.setName(favorite.getRestaurant().getName());
+            restaurantDTO.setAddress(favorite.getRestaurant().getAddress());
+            restaurantDTO.setDescription(favorite.getRestaurant().getDescription());
+            restaurantDTO.setAverageRating(favorite.getRestaurant().getAverageRating());
             dto.setRestaurant(restaurantDTO);
         }
 
